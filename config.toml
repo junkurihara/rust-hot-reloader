@@ -1,0 +1,5 @@
+listen_addresses = ['127.0.0.1:50053', '[::1]:50053']
+
+[user_info]
+user_name = "Jun Kurihara"
+user_id = "jk"
