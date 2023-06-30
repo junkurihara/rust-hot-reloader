@@ -1,5 +1,5 @@
 use derive_builder::Builder;
-use reload::ReloaderReceiver;
+use reloader::ReloaderReceiver;
 
 #[derive(Clone, Builder)]
 pub struct ServerContext<ServerConfig> {

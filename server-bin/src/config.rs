@@ -1,7 +1,7 @@
 use crate::error::*;
 use async_trait::async_trait;
 use clap::{command, Arg};
-use reload::{Reload, ReloaderError, ReloaderService};
+use reloader::{Reload, ReloaderError, ReloaderService};
 use serde::Deserialize;
 use server_lib::{Server, ServerConfig, ServerConfigBuilder, ServerContextBuilder};
 use std::{fs, path::PathBuf, sync::Arc};

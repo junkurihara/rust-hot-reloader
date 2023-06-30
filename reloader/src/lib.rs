@@ -9,7 +9,7 @@ use tracing::{debug, error, info, warn};
 
 #[derive(Debug, Error)]
 pub enum ReloaderError {
-  #[error("Error at watcher receiver")]
+  #[error("Error at reloaded value receiver")]
   WatchRecvError(#[from] watch::error::RecvError),
 
   #[error("Failed to reload: {0}")]

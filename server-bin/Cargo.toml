@@ -10,7 +10,7 @@ readme = "README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-reload = { path = "../reload/" }
+reloader = { path = "../reloader/" }
 server_lib = { path = "../server-lib/" }
 
 # launch options
