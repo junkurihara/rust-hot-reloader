@@ -1,14 +1,10 @@
-use crate::{error::*, log::*};
+use crate::error::*;
 use async_trait::async_trait;
 use clap::{command, Arg};
 use reload::{Reload, ReloaderError, ReloaderService};
 use serde::Deserialize;
 use server_lib::{Server, ServerConfig, ServerConfigBuilder, ServerContextBuilder};
-use std::{
-  fs,
-  path::PathBuf,
-  sync::{Arc, Mutex},
-};
+use std::{fs, path::PathBuf, sync::Arc};
 use tokio::runtime::Handle;
 
 pub async fn parse_opts(runtime_handle: &Handle) -> Result<(ReloaderService<ConfigReloader, ServerConfig>, Server)> {
@@ -23,13 +19,11 @@ pub async fn parse_opts(runtime_handle: &Handle) -> Result<(ReloaderService<Conf
   );
   let matches = options.get_matches();
 
-  /////////////////////////
-  //   toml file path    //
-  /////////////////////////
+  // toml file path
   let config_path = matches.get_one::<String>("config_file").unwrap();
 
   // Setup reloader service
-  let (reloader, rx) = ReloaderService::new(config_path, 10).await.unwrap();
+  let (reloader, rx) = ReloaderService::new(config_path, 10, false).await.unwrap();
 
   // Setup server context with arbitrary config reloader's receiver
   let context = ServerContextBuilder::default()
@@ -47,7 +41,6 @@ pub async fn parse_opts(runtime_handle: &Handle) -> Result<(ReloaderService<Conf
 
 #[derive(Clone, Debug)]
 pub struct ConfigReloader {
-  pub current_config: Arc<Mutex<Option<ConfigToml>>>,
   pub config_path: PathBuf,
 }
 
@@ -56,39 +49,22 @@ impl Reload<ServerConfig> for ConfigReloader {
   type Source = String;
   async fn new(source: &Self::Source) -> Result<Self, ReloaderError> {
     Ok(Self {
-      current_config: Arc::new(Mutex::new(None)),
       config_path: PathBuf::from(source),
     })
   }
 
-  async fn reload(&self) -> Result<Option<Arc<ServerConfig>>, ReloaderError> {
+  async fn reload(&self) -> Result<Option<ServerConfig>, ReloaderError> {
     let config_str = fs::read_to_string(&self.config_path).context("Failed to read config file")?;
     let config_toml: ConfigToml = toml::from_str(&config_str)
       .context("Failed to parse toml config")
       .map_err(|_e| ReloaderError::Reload("Failed to load the configuration file"))?;
-
-    {
-      let mut current_opt = self
-        .current_config
-        .lock()
-        .map_err(|_e| ReloaderError::Reload("Failed to lock the mutex for loading current config"))?;
-      if let Some(current) = current_opt.clone() {
-        if !current.is_updated(&config_toml) {
-          return Ok(None);
-        }
-      }
-
-      *current_opt = Some(config_toml.clone());
-    }
-    info!("Configuration file was initially loaded or updated");
-
     let config = config_toml.into();
 
-    Ok(Some(Arc::new(config)))
+    Ok(Some(config))
   }
 }
 
-#[derive(Debug, Default, Deserialize, PartialEq, Eq, Clone)]
+#[derive(Debug, Default, Deserialize, Clone)]
 pub struct ConfigToml {
   pub id: u32,
   pub name: String,
@@ -101,11 +77,5 @@ impl From<ConfigToml> for ServerConfig {
       .name(val.name)
       .build()
       .unwrap()
-  }
-}
-
-impl ConfigToml {
-  pub fn is_updated(&self, new_one: &Self) -> bool {
-    self != new_one
   }
 }

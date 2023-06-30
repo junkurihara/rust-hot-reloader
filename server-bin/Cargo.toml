@@ -21,13 +21,8 @@ clap = { version = "4.3.10", default-features = false, features = [
 ] }
 
 # async/await
-tokio = { version = "1.29.1", features = [
-  "net",
+tokio = { version = "1.29.1", default-features = false, features = [
   "rt-multi-thread",
-  "parking_lot",
-  "time",
-  "sync",
-  "macros",
 ] }
 
 # error
