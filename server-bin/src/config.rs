@@ -1,19 +1,22 @@
-use crate::{
-  error::*,
-  globals::Globals,
-  log::*,
-  watcher::{WatcherReceiver, WatcherTarget},
-};
+use crate::{error::*, log::*};
 use async_trait::async_trait;
 use clap::{command, Arg};
+use reload::{ReloaderError, ReloaderService, ReloaderTarget};
 use serde::Deserialize;
+use server_lib::{Server, ServerContextBuilder};
 use std::{fs, sync::Arc};
 use tokio::runtime::Handle;
 
-pub async fn parse_opts<T>(runtime_handle: &Handle, rx: WatcherReceiver<T>) -> Result<Arc<Globals<T>>>
-where
-  T: WatcherTarget + Clone,
-{
+pub async fn parse_opts(runtime_handle: &Handle) -> Result<(ReloaderService<ServerConfig>, Server<ServerConfig>)> {
+  // Setup watcher service
+  let watcher_target = ServerConfig {
+    config: ConfigToml {
+      listen_addresses: None,
+      user_info: None,
+    },
+  };
+  let (reloader, rx) = ReloaderService::new(watcher_target, 10).await.unwrap();
+
   let _ = include_str!("../Cargo.toml");
   let options = command!().arg(
     Arg::new("config_file")
@@ -31,11 +34,16 @@ where
     panic!()
   };
 
-  Ok(Arc::new(Globals {
-    config_path: config_path.to_string(),
-    runtime_handle: runtime_handle.to_owned(),
-    watcher_rx: rx,
-  }))
+  let context = ServerContextBuilder::default()
+    .runtime_handle(runtime_handle.to_owned())
+    .context_rx(rx)
+    .build()?;
+  Ok((
+    reloader,
+    Server {
+      context: Arc::new(context),
+    },
+  ))
 }
 
 #[derive(Debug, Default, Deserialize, PartialEq, Eq, Clone)]
@@ -45,14 +53,14 @@ pub struct ConfigToml {
 }
 
 #[derive(Clone, Debug)]
-pub struct ConfigWatch {
+pub struct ServerConfig {
   pub config: ConfigToml,
 }
 
 #[async_trait]
-impl WatcherTarget for ConfigWatch {
+impl ReloaderTarget for ServerConfig {
   type TargetValue = ConfigToml;
-  async fn reload(&self) -> Result<Option<Arc<Self::TargetValue>>> {
+  async fn reload(&self) -> Result<Option<Arc<Self::TargetValue>>, ReloaderError> {
     // TODO:
     info!("reload");
     // Ok(None)

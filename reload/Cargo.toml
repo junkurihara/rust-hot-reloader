@@ -1,0 +1,22 @@
+[package]
+name = "reload"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# async/await
+tokio = { version = "1.29.1", features = [
+  "net",
+  "rt-multi-thread",
+  "parking_lot",
+  "time",
+  "sync",
+  "macros",
+] }
+
+async-trait = "0.1.68"
+tracing = "0.1.37"
+thiserror = "1.0.40"
+anyhow = "1.0.71"
