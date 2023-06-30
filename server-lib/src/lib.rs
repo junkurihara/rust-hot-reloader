@@ -1,8 +1,8 @@
 mod context;
 
-pub use crate::context::{ServerContext, ServerContextBuilder};
+pub use crate::context::{ServerConfig, ServerConfigBuilder, ServerContext, ServerContextBuilder};
 
-use reload::{ReloaderService, ReloaderTarget};
+use reload::{Reload, ReloaderService};
 use std::fmt::Debug;
 use std::sync::Arc;
 use thiserror::Error;
@@ -14,20 +14,14 @@ pub enum ServerLibError {
   Other(#[from] anyhow::Error),
 }
 
-pub struct Server<T>
-where
-  T: ReloaderTarget + Clone,
-{
-  pub context: Arc<ServerContext<T>>,
+pub struct Server {
+  pub context: Arc<ServerContext<ServerConfig>>,
 }
 
-impl<T> Server<T>
-where
-  T: ReloaderTarget + Clone + Send + Sync + 'static,
-{
-  pub async fn entrypoint(&self, context_reloader: ReloaderService<T>) -> Result<(), ServerLibError>
+impl Server {
+  pub async fn entrypoint<T>(&self, context_reloader: ReloaderService<T, ServerConfig>) -> Result<(), ServerLibError>
   where
-    <T as ReloaderTarget>::TargetValue: Debug + Send + Sync,
+    T: Reload<ServerConfig> + Clone + Send + Sync + Debug + 'static,
   {
     // Spawn reloader service
     self

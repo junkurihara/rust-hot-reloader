@@ -1,5 +1,8 @@
-listen_addresses = ['127.0.0.1:50053', '[::1]:50053']
+id = 1234
+name = "onamae"
 
-[user_info]
-user_name = "Jun Kurihara"
-user_id = "jk"
+# listen_addresses = ['127.0.0.1:50053', '[::1]:50053']
+
+# [user_info]
+# user_name = "Jun Kurihara"
+# user_id = "jk"

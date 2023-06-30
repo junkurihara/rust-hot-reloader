@@ -4,7 +4,6 @@ mod log;
 
 use config::parse_opts;
 use log::*;
-use server_lib::Server;
 
 fn main() {
   log::init_logger();
@@ -19,7 +18,7 @@ fn main() {
     let (reloader, server) = match parse_opts(runtime.handle()).await {
       Ok(all) => all,
       Err(e) => {
-        error!("Failed to parse config TOML: {}", e);
+        error!("Failed to load configuration: {}", e);
         std::process::exit(1);
       }
     };
