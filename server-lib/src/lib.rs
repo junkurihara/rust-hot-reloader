@@ -19,6 +19,10 @@ pub struct Server {
 }
 
 impl Server {
+  pub async fn wait_for_something(&self) -> Result<(), ServerLibError> {
+    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+    Ok(())
+  }
   pub async fn entrypoint<T>(&self, context_reloader: ReloaderService<T, ServerConfig>) -> Result<(), ServerLibError>
   where
     T: Reload<ServerConfig> + Clone + Send + Sync + Debug + 'static,
@@ -35,7 +39,10 @@ impl Server {
     loop {
       tokio::select! {
         // Add main logic of the event loop with up-to-date value
-
+        _ = self.wait_for_something() => {
+          // do something like after `listener.accept()`
+          info!("Current value: {:?}", value);
+        }
         // immediately update if watcher detects the change
         _ = rx.changed()  => {
           if rx.borrow().is_none() {
@@ -43,7 +50,7 @@ impl Server {
           }
           value = rx.borrow().clone();
           info!("Received value via watcher");
-          info!("value: {:?}", value.unwrap().clone());
+          info!("value: {:?}", value);
         }
         else => break
       }
