@@ -1,5 +1,5 @@
 [package]
-name = "hot_reload"
+name = "hot-reload"
 description = "Trait and service definition of periodic hot reloader and notifier for config-file, KVS, etc."
 version = "0.1.0"
 edition = "2021"
