@@ -47,13 +47,13 @@ pub struct ConfigReloader {
 #[async_trait]
 impl Reload<ServerConfig> for ConfigReloader {
   type Source = String;
-  async fn new(source: &Self::Source) -> Result<Self, ReloaderError> {
+  async fn new(source: &Self::Source) -> Result<Self, ReloaderError<ServerConfig>> {
     Ok(Self {
       config_path: PathBuf::from(source),
     })
   }
 
-  async fn reload(&self) -> Result<Option<ServerConfig>, ReloaderError> {
+  async fn reload(&self) -> Result<Option<ServerConfig>, ReloaderError<ServerConfig>> {
     let config_str = fs::read_to_string(&self.config_path).context("Failed to read config file")?;
     let config_toml: ConfigToml = toml::from_str(&config_str)
       .context("Failed to parse toml config")

@@ -17,10 +17,10 @@ where
   V: Eq + PartialEq
 {
   type Source;
-  async fn new(src: &Self::Source) -> Result<Self, ReloaderError>
+  async fn new(src: &Self::Source) -> Result<Self, ReloaderError<V>>
   where
     Self: Sized;
-  async fn reload(&self) -> Result<Option<V>, ReloaderError>;
+  async fn reload(&self) -> Result<Option<V>, ReloaderError<V>>;
 }
 ```
 

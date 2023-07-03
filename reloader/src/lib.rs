@@ -8,9 +8,15 @@ use tokio::{
 use tracing::{debug, error, info, warn};
 
 #[derive(Debug, Error)]
-pub enum ReloaderError {
+pub enum ReloaderError<V>
+where
+  V: Eq + PartialEq,
+{
   #[error("Error at reloaded value receiver")]
   WatchRecvError(#[from] watch::error::RecvError),
+
+  #[error("Error at reloaded value sender")]
+  WatchSendError(#[from] watch::error::SendError<Option<V>>),
 
   #[error("Failed to reload: {0}")]
   Reload(&'static str),
@@ -27,10 +33,10 @@ where
   V: Eq + PartialEq,
 {
   type Source;
-  async fn new(src: &Self::Source) -> Result<Self, ReloaderError>
+  async fn new(src: &Self::Source) -> Result<Self, ReloaderError<V>>
   where
     Self: Sized;
-  async fn reload(&self) -> Result<Option<V>, ReloaderError>;
+  async fn reload(&self) -> Result<Option<V>, ReloaderError<V>>;
 }
 
 /// Sender object that simply wraps `tokio::sync:::watch::Sender`
@@ -53,7 +59,7 @@ impl<V> ReloaderReceiver<V>
 where
   V: Eq + PartialEq,
 {
-  pub async fn changed(&mut self) -> Result<(), ReloaderError> {
+  pub async fn changed(&mut self) -> Result<(), ReloaderError<V>> {
     self.inner.changed().await.map_err(ReloaderError::WatchRecvError)
   }
 
@@ -122,7 +128,7 @@ where
     source: &<T as Reload<V>>::Source,
     watch_delay_sec: u32,
     force_reload: bool,
-  ) -> Result<(Self, ReloaderReceiver<V>), ReloaderError> {
+  ) -> Result<(Self, ReloaderReceiver<V>), ReloaderError<V>> {
     let reloader = <T as Reload<V>>::new(source).await?;
     let initial_value = None;
     let (tx, rx) = watch::channel(None);
@@ -140,7 +146,7 @@ where
   }
 
   /// Start the reloader service watching the target value `V`.
-  pub async fn start(&self) {
+  pub async fn start(&self) -> Result<(), ReloaderError<V>> {
     debug!("Start reloader service");
 
     loop {
@@ -168,11 +174,11 @@ where
         *old_value_opt = Some(target.clone());
       }
 
-      info!("Disseminate up-to-date value");
+      info!("Target reloaded. Disseminate up-to-date value");
 
-      if let Err(_e) = self.tx.inner.send(Some(target)) {
+      if let Err(e) = self.tx.inner.send(Some(target)) {
         error!("Failed to populate the reloader target");
-        break;
+        return Err(ReloaderError::WatchSendError(e));
       }
       sleep(Duration::from_secs(self.watch_delay_sec.into())).await;
     }
