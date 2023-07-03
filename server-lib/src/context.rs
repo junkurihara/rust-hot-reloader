@@ -2,8 +2,11 @@ use derive_builder::Builder;
 use reloader::ReloaderReceiver;
 
 #[derive(Clone, Builder)]
-pub struct ServerContext<ServerConfig> {
-  pub(crate) context_rx: ReloaderReceiver<ServerConfig>,
+pub struct ServerContext<V>
+where
+  V: Eq + PartialEq,
+{
+  pub(crate) context_rx: ReloaderReceiver<V>,
   pub(crate) runtime_handle: tokio::runtime::Handle,
 }
 

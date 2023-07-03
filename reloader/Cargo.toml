@@ -1,11 +1,13 @@
 [package]
 name = "reloader"
-description = "Trait and service definition for periodic reloading of config-file, KVS, etc."
+description = "Trait and service definition of periodic hot reloader and notifier for config-file, KVS, etc."
 version = "0.1.0"
 edition = "2021"
+repository = "https://github.com/junkurihara/rust-hot-reloader"
 authors = ["Jun Kurihara"]
 license = "MIT"
 readme = "../README.md"
+categories = ["filesystem", "rust-patterns"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -14,7 +16,7 @@ tokio = { version = "1.29.1", default-features = false, features = [
   "time",
   "sync",
 ] }
-async-trait = "0.1.68"
+async-trait = "0.1.69"
 tracing = "0.1.37"
 thiserror = "1.0.40"
 anyhow = "1.0.71"

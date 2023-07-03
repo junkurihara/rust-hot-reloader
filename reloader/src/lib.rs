@@ -22,7 +22,10 @@ pub enum ReloaderError {
 #[async_trait]
 /// Trait defining the responsibility of reloaders to periodically load the target value `V` from `Source`.
 /// Source could be a file, a KVS, whatever if you can implement `Reload<V>` with `Reload<V>::Source`.
-pub trait Reload<V> {
+pub trait Reload<V>
+where
+  V: Eq + PartialEq,
+{
   type Source;
   async fn new(src: &Self::Source) -> Result<Self, ReloaderError>
   where
@@ -31,16 +34,25 @@ pub trait Reload<V> {
 }
 
 /// Sender object that simply wraps `tokio::sync:::watch::Sender`
-pub struct ReloaderSender<V> {
+pub struct ReloaderSender<V>
+where
+  V: Eq + PartialEq,
+{
   inner: watch::Sender<Option<V>>,
 }
 
 #[derive(Clone)]
 /// Receiver object that simply wraps `tokio::sync:::watch::Receiver`
-pub struct ReloaderReceiver<V> {
+pub struct ReloaderReceiver<V>
+where
+  V: Eq + PartialEq,
+{
   inner: watch::Receiver<Option<V>>,
 }
-impl<V> ReloaderReceiver<V> {
+impl<V> ReloaderReceiver<V>
+where
+  V: Eq + PartialEq,
+{
   pub async fn changed(&mut self) -> Result<(), ReloaderError> {
     self.inner.changed().await.map_err(ReloaderError::WatchRecvError)
   }
@@ -52,7 +64,7 @@ impl<V> ReloaderReceiver<V> {
 
 /// Main object to run reloader service watching the target like config files.
 /// This should be spawned as async task like the following
-/// ```
+/// ```ignore
 /// let (reloader, rx) = ReloaderService::new(source, 10, false).await.unwrap();
 /// tokio::spawn(async move { reloader_service.start().await });
 /// loop {
@@ -103,6 +115,9 @@ where
   V: Eq + PartialEq + Clone,
 {
   /// Instantiate the `ReloaderService<T,V>` object.
+  /// - `source`: Source
+  /// - `watch_delay_sec`: Period of reloading
+  /// - `force_reload`: If true, reload and disseminate where the target is updated or not.
   pub async fn new(
     source: &<T as Reload<V>>::Source,
     watch_delay_sec: u32,

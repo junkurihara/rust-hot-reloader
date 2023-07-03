@@ -1,3 +1,9 @@
 [workspace]
 
-members = ["reloader", "server-lib", "server-bin"]
+members = [
+  "reloader",
+
+  # internal examples
+  "server-lib",
+  "server-bin",
+]
