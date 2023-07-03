@@ -2,7 +2,7 @@ mod context;
 
 pub use crate::context::{ServerConfig, ServerConfigBuilder, ServerContext, ServerContextBuilder};
 
-use reloader::{Reload, ReloaderService};
+use hot_reload::{Reload, ReloaderService};
 use std::fmt::Debug;
 use std::sync::Arc;
 use thiserror::Error;

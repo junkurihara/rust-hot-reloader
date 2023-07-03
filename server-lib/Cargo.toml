@@ -7,7 +7,7 @@ publish = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-reloader = { path = "../reloader/" }
+hot_reload = { path = "../reloader/" }
 derive_builder = "0.12.0"
 anyhow = "1.0.71"
 thiserror = "1.0.40"

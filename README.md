@@ -50,7 +50,7 @@ impl Reload<ServerConfig> for ConfigReloader {
 ## Usage
 
 ```rust
-use reloader::*;
+use hot_reload::*;
 
 let (reloader, rx) = ReloaderService::new(source, 10, false).await.unwrap();
 tokio::spawn(async move { reloader_service.start().await });
