@@ -1,5 +1,7 @@
 # Periodic hot reloader and notifier for files, KVS, etc. for Rust
 
+[![hot_reload](https://img.shields.io/crates/v/hot_reload.svg)](https://crates.io/crates/hot_reload) [![hot_reload](https://docs.rs/hot_reload/badge.svg)](https://docs.rs/hot_reload) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 This provides a Rust trait definition and service library for hot-reloading your files, KVS, etc. by periodically checking the system.
 
 ## `Reload` Trait Definition
