@@ -34,15 +34,15 @@ pub struct ConfigReloader {
 #[async_trait]
 impl Reload<ServerConfig> for ConfigReloader {
   type Source = String;
-  async fn new(source: &Self::Source) -> Result<Self, ReloaderError> {
+  async fn new(source: &Self::Source) -> Result<Self, ReloaderError<ServerConfig>> {
     Ok(Self {
       config_path: PathBuf::from(source),
     })
   }
 
-  async fn reload(&self) -> Result<Option<ConfigObject>, ReloaderError> {
+  async fn reload(&self) -> Result<Option<ServerConfig>, ReloaderError<ServerConfig>> {
     let config_str = std::fs::read_to_string(&self.config_path).context("Failed to read config file")?;
-    let config: ConfigObject = config_object_from_str(config_str);
+    let config: ServerConfig = config_object_from_str(config_str);
 
     Ok(Some(config))
   }
