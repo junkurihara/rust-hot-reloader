@@ -12,11 +12,11 @@ categories = ["filesystem", "rust-patterns"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tokio = { version = "1.32.0", default-features = false, features = [
+tokio = { version = "1.33.0", default-features = false, features = [
   "time",
   "sync",
 ] }
-async-trait = "0.1.73"
-tracing = "0.1.37"
-thiserror = "1.0.48"
+async-trait = "0.1.74"
+tracing = "0.1.39"
+thiserror = "1.0.49"
 anyhow = "1.0.75"
