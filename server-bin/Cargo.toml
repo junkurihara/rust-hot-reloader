@@ -39,4 +39,4 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 async-trait = "0.1.77"
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
-tikv-jemallocator = "0.5.4"
+tikv-jemallocator = "0.6.0"
