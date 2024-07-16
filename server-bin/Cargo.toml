@@ -15,28 +15,28 @@ hot_reload = { path = "../reloader/" }
 server-lib = { path = "../server-lib/" }
 
 # launch options
-clap = { version = "4.4.18", default-features = false, features = [
+clap = { version = "4.5.9", default-features = false, features = [
   "std",
   "cargo",
   "wrap_help",
 ] }
 
 # async/await
-tokio = { version = "1.35.1", default-features = false, features = [
+tokio = { version = "1.38.0", default-features = false, features = [
   "rt-multi-thread",
 ] }
 
 # error
-anyhow = "1.0.79"
+anyhow = "1.0.86"
 
 # config toml
-toml = { version = "0.8.8", default-features = false, features = ["parse"] }
-serde = { version = "1.0.195", default-features = false, features = ["derive"] }
+toml = { version = "0.8.14", default-features = false, features = ["parse"] }
+serde = { version = "1.0.204", default-features = false, features = ["derive"] }
 
 # logging
 tracing = { version = "0.1.40" }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
-async-trait = "0.1.77"
+async-trait = "0.1.81"
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
-tikv-jemallocator = "0.5.4"
+tikv-jemallocator = "0.6.0"

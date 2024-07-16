@@ -1,3 +1,4 @@
+#[allow(unused)]
 pub use tracing::{debug, error, info, warn};
 
 pub fn init_logger() {
@@ -18,8 +19,5 @@ pub fn init_logger() {
   // let filter_layer = EnvFilter::new(format!("{}={}", pkg_name, level_string));
   let filter_layer = EnvFilter::from_default_env();
 
-  tracing_subscriber::registry()
-    .with(format_layer)
-    .with(filter_layer)
-    .init();
+  tracing_subscriber::registry().with(format_layer).with(filter_layer).init();
 }

@@ -7,6 +7,7 @@ where
   V: Eq + PartialEq,
 {
   pub(crate) context_rx: ReloaderReceiver<V>,
+  #[allow(unused)]
   pub(crate) runtime_handle: tokio::runtime::Handle,
 }
 

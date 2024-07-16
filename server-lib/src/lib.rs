@@ -61,7 +61,7 @@ impl Server {
             // break;
             return Err(ServerLibError::Other(anyhow!("None value")));
           }
-          value = rx.borrow().clone();
+          value.clone_from(&rx.borrow());
           info!("Received value via watcher");
           info!("value: {:?}", value);
         }
