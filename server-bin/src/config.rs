@@ -72,10 +72,6 @@ pub struct ConfigToml {
 
 impl From<ConfigToml> for ServerConfig {
   fn from(val: ConfigToml) -> Self {
-    ServerConfigBuilder::default()
-      .id(val.id)
-      .name(val.name)
-      .build()
-      .unwrap()
+    ServerConfigBuilder::default().id(val.id).name(val.name).build().unwrap()
   }
 }

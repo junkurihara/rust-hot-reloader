@@ -8,9 +8,10 @@ use tokio::{
 use tracing::{debug, error, info, warn};
 
 #[derive(Debug, Error)]
-pub enum ReloaderError<V>
+pub enum ReloaderError<V, S = &'static str>
 where
   V: Eq + PartialEq,
+  S: Into<std::borrow::Cow<'static, str>> + std::fmt::Display,
 {
   #[error("Error at reloaded value receiver")]
   WatchRecvError(#[from] watch::error::RecvError),
@@ -19,7 +20,7 @@ where
   WatchSendError(#[from] watch::error::SendError<Option<V>>),
 
   #[error("Failed to reload: {0}")]
-  Reload(&'static str),
+  Reload(S),
 
   #[error(transparent)]
   Other(#[from] anyhow::Error),
@@ -28,15 +29,16 @@ where
 #[async_trait]
 /// Trait defining the responsibility of reloaders to periodically load the target value `V` from `Source`.
 /// Source could be a file, a KVS, whatever if you can implement `Reload<V>` with `Reload<V>::Source`.
-pub trait Reload<V>
+pub trait Reload<V, S = &'static str>
 where
   V: Eq + PartialEq,
+  S: Into<std::borrow::Cow<'static, str>> + std::fmt::Display,
 {
   type Source;
-  async fn new(src: &Self::Source) -> Result<Self, ReloaderError<V>>
+  async fn new(src: &Self::Source) -> Result<Self, ReloaderError<V, S>>
   where
     Self: Sized;
-  async fn reload(&self) -> Result<Option<V>, ReloaderError<V>>;
+  async fn reload(&self) -> Result<Option<V>, ReloaderError<V, S>>;
 }
 
 /// Sender object that simply wraps `tokio::sync:::watch::Sender`
@@ -49,17 +51,20 @@ where
 
 #[derive(Clone)]
 /// Receiver object that simply wraps `tokio::sync:::watch::Receiver`
-pub struct ReloaderReceiver<V>
+pub struct ReloaderReceiver<V, S = &'static str>
 where
   V: Eq + PartialEq,
+  S: Into<std::borrow::Cow<'static, str>> + std::fmt::Display,
 {
   inner: watch::Receiver<Option<V>>,
+  _phantom: std::marker::PhantomData<S>,
 }
-impl<V> ReloaderReceiver<V>
+impl<V, S> ReloaderReceiver<V, S>
 where
   V: Eq + PartialEq,
+  S: Into<std::borrow::Cow<'static, str>> + std::fmt::Display,
 {
-  pub async fn changed(&mut self) -> Result<(), ReloaderError<V>> {
+  pub async fn changed(&mut self) -> Result<(), ReloaderError<V, S>> {
     self.inner.changed().await.map_err(ReloaderError::WatchRecvError)
   }
 
@@ -94,10 +99,11 @@ where
 ///   }
 /// }
 /// ```
-pub struct ReloaderService<T, V>
+pub struct ReloaderService<T, V, S = &'static str>
 where
-  T: Reload<V>,
+  T: Reload<V, S>,
   V: Eq + PartialEq + Clone,
+  S: Into<std::borrow::Cow<'static, str>> + std::fmt::Display,
 {
   /// Reloader that responsible to reload the up-to-date value `V`
   reloader: T,
@@ -113,23 +119,26 @@ where
 
   /// Reload only when the reloader target `V` is updated
   force_reload: bool,
+
+  _phantom: std::marker::PhantomData<S>,
 }
 
-impl<T, V> ReloaderService<T, V>
+impl<T, V, S> ReloaderService<T, V, S>
 where
-  T: Reload<V> + Clone,
+  T: Reload<V, S> + Clone,
   V: Eq + PartialEq + Clone,
+  S: Into<std::borrow::Cow<'static, str>> + std::fmt::Display,
 {
   /// Instantiate the `ReloaderService<T,V>` object.
   /// - `source`: Source
   /// - `watch_delay_sec`: Period of reloading
   /// - `force_reload`: If true, reload and disseminate where the target is updated or not.
   pub async fn new(
-    source: &<T as Reload<V>>::Source,
+    source: &<T as Reload<V, S>>::Source,
     watch_delay_sec: u32,
     force_reload: bool,
-  ) -> Result<(Self, ReloaderReceiver<V>), ReloaderError<V>> {
-    let reloader = <T as Reload<V>>::new(source).await?;
+  ) -> Result<(Self, ReloaderReceiver<V, S>), ReloaderError<V, S>> {
+    let reloader = <T as Reload<V, S>>::new(source).await?;
     let initial_value = None;
     let (tx, rx) = watch::channel(None);
 
@@ -140,13 +149,17 @@ where
         tx: ReloaderSender { inner: tx },
         watch_delay_sec,
         force_reload,
+        _phantom: std::marker::PhantomData,
       },
-      ReloaderReceiver { inner: rx },
+      ReloaderReceiver {
+        inner: rx,
+        _phantom: std::marker::PhantomData,
+      },
     ))
   }
 
   /// Start the reloader service watching the target value `V`.
-  pub async fn start(&self) -> Result<(), ReloaderError<V>> {
+  pub async fn start(&self) -> Result<(), ReloaderError<V, S>> {
     debug!("Start reloader service");
 
     loop {
