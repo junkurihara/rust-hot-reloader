@@ -7,3 +7,5 @@ members = [
   "server-lib",
   "server-bin",
 ]
+
+resolver = "2"

@@ -150,10 +150,13 @@ where
     debug!("Start reloader service");
 
     loop {
-      let Ok(target_opt) = self.reloader.reload().await else {
-        warn!("Failed to reload watch target");
-        sleep(Duration::from_secs(self.watch_delay_sec.into())).await;
-        continue;
+      let target_opt = match self.reloader.reload().await {
+        Ok(target_opt) => target_opt,
+        Err(e) => {
+          warn!("Failed to reload watch target: {}", e);
+          sleep(Duration::from_secs(self.watch_delay_sec.into())).await;
+          continue;
+        }
       };
       let Some(target) = target_opt else {
         warn!("Reloader target was none");
