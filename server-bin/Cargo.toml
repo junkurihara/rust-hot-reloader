@@ -2,7 +2,7 @@
 name = "server-bin"
 description = "start toml hot-reloading poc through detection of file changes"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 authors = ["Jun Kurihara"]
 license = "MIT"
 readme = "README.md"
@@ -15,28 +15,28 @@ hot_reload = { path = "../reloader/" }
 server-lib = { path = "../server-lib/" }
 
 # launch options
-clap = { version = "4.5.20", default-features = false, features = [
+clap = { version = "4.5.34", default-features = false, features = [
   "std",
   "cargo",
   "wrap_help",
 ] }
 
 # async/await
-tokio = { version = "1.41.0", default-features = false, features = [
+tokio = { version = "1.44.1", default-features = false, features = [
   "rt-multi-thread",
 ] }
 
 # error
-anyhow = "1.0.92"
+anyhow = "1.0.97"
 
 # config toml
-toml = { version = "0.8.19", default-features = false, features = ["parse"] }
-serde = { version = "1.0.214", default-features = false, features = ["derive"] }
+toml = { version = "0.8.20", default-features = false, features = ["parse"] }
+serde = { version = "1.0.219", default-features = false, features = ["derive"] }
 
 # logging
-tracing = { version = "0.1.40" }
-tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
-async-trait = "0.1.83"
+tracing = { version = "0.1.41" }
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+async-trait = "0.1.88"
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
 tikv-jemallocator = "0.6.0"
