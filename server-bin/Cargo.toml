@@ -15,22 +15,22 @@ hot_reload = { path = "../reloader/" }
 server-lib = { path = "../server-lib/" }
 
 # launch options
-clap = { version = "4.5.34", default-features = false, features = [
+clap = { version = "4.5.40", default-features = false, features = [
   "std",
   "cargo",
   "wrap_help",
 ] }
 
 # async/await
-tokio = { version = "1.44.1", default-features = false, features = [
+tokio = { version = "1.45.1", default-features = false, features = [
   "rt-multi-thread",
 ] }
 
 # error
-anyhow = "1.0.97"
+anyhow = "1.0.98"
 
 # config toml
-toml = { version = "0.8.20", default-features = false, features = ["parse"] }
+toml = { version = "0.8.23", default-features = false, features = ["parse"] }
 serde = { version = "1.0.219", default-features = false, features = ["derive"] }
 
 # logging

@@ -9,9 +9,9 @@ publish = false
 [dependencies]
 hot_reload = { path = "../reloader/" }
 derive_builder = "0.20.2"
-anyhow = "1.0.97"
+anyhow = "1.0.98"
 thiserror = "2.0.12"
-tokio = { version = "1.44.1", default-features = false, features = [
+tokio = { version = "1.45.1", default-features = false, features = [
   "rt-multi-thread",
   "macros",
 ] }
