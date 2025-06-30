@@ -1,7 +1,7 @@
 use crate::error::*;
 use async_trait::async_trait;
 use clap::{command, Arg};
-use hot_reload::{Reload, ReloaderError, ReloaderService};
+use hot_reload::{Reload, ReloaderError, ReloaderService, ReloadResult};
 use serde::Deserialize;
 use server_lib::{Server, ServerConfig, ServerConfigBuilder, ServerContextBuilder};
 use std::{fs, path::PathBuf, sync::Arc};
@@ -22,8 +22,8 @@ pub async fn parse_opts(runtime_handle: &Handle) -> Result<(ReloaderService<Conf
   // toml file path
   let config_path = matches.get_one::<String>("config_file").unwrap();
 
-  // Setup reloader service
-  let (reloader, rx) = ReloaderService::new(config_path, 10, false).await.unwrap();
+  // Setup reloader service  
+  let (reloader, rx) = ReloaderService::with_delay(config_path, 10).await.unwrap();
 
   // Setup server context with arbitrary config reloader's receiver
   let context = ServerContextBuilder::default()
@@ -47,13 +47,13 @@ pub struct ConfigReloader {
 #[async_trait]
 impl Reload<ServerConfig> for ConfigReloader {
   type Source = String;
-  async fn new(source: &Self::Source) -> Result<Self, ReloaderError<ServerConfig>> {
+  async fn new(source: &Self::Source) -> ReloadResult<Self, ServerConfig> {
     Ok(Self {
       config_path: PathBuf::from(source),
     })
   }
 
-  async fn reload(&self) -> Result<Option<ServerConfig>, ReloaderError<ServerConfig>> {
+  async fn reload(&self) -> ReloadResult<Option<ServerConfig>, ServerConfig> {
     let config_str = fs::read_to_string(&self.config_path).context("Failed to read config file")?;
     let config_toml: ConfigToml = toml::from_str(&config_str)
       .context("Failed to parse toml config")
