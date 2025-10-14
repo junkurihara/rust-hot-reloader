@@ -25,8 +25,8 @@ pub async fn parse_opts(runtime_handle: &Handle) -> Result<(ReloaderService<Conf
         .long("watch-mode")
         .short('w')
         .value_name("MODE")
-        .default_value("realtime")
-        .help("Watch strategy: polling, or realtime (default)"),
+        .default_value("hybrid")
+        .help("Watch strategy: polling, realtime, or hybrid (default)"),
     );
   let matches = options.get_matches();
 
@@ -40,17 +40,17 @@ pub async fn parse_opts(runtime_handle: &Handle) -> Result<(ReloaderService<Conf
       tracing::info!("Using polling mode with 10 second interval");
       hot_reload::ReloaderConfig::polling(10)
     }
+    "hybrid" => {
+      tracing::info!("Using hybrid mode (realtime with polling fallback)");
+      hot_reload::ReloaderConfig::hybrid(10)
+    }
     "realtime" => {
       tracing::info!("Using realtime file system monitoring");
       hot_reload::ReloaderConfig::realtime()
     }
-    // "hybrid" => {
-    //   tracing::info!("Using hybrid mode (realtime with polling fallback)");
-    //   hot_reload::ReloaderConfig::hybrid(10)
-    // }
     _ => {
-      tracing::warn!("Unknown watch mode '{}', defaulting to realtime", watch_mode);
-      hot_reload::ReloaderConfig::realtime()
+      tracing::warn!("Unknown watch mode '{}', defaulting to hybrid", watch_mode);
+      hot_reload::ReloaderConfig::hybrid(10)
     }
   };
 

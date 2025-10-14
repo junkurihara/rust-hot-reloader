@@ -59,7 +59,7 @@ The library supports three monitoring strategies:
 
 1. **Polling** (default): Periodically checks for changes at a configured interval
 2. **Realtime**: Uses event-based monitoring (e.g., file system events via `notify` crate)
-<!-- 3. **Hybrid**: Tries realtime monitoring first, falls back to polling on error (recommended) -->
+3. **Hybrid** (recommended): Tries realtime monitoring first, falls back to polling on error and retries realtime
 
 ### Configuration
 
@@ -82,7 +82,7 @@ The service provides several convenience methods:
 - `with_delay(delay_sec)`: Custom delay with polling
 - `ReloaderConfig::polling(delay_sec)`: Polling strategy
 - `ReloaderConfig::realtime()`: Realtime strategy
-<!-- - `ReloaderConfig::hybrid(delay_sec)`: Hybrid strategy (recommended) -->
+- `ReloaderConfig::hybrid(delay_sec)`: Hybrid strategy (recommended)
 - `new(source, config)`: Full control over configuration
 
 ## Usage
@@ -144,11 +144,15 @@ impl RealtimeWatch<ServerConfig> for ConfigReloader {
 }
 ```
 
-Then use the realtime strategy (recommended):
+Then use the realtime (or hybrid) strategy:
 
 ```rust
 // Realtime mode
 let config = ReloaderConfig::realtime();
+let (service, rx) = ReloaderService::new(&config_path, config).await?;
+
+// Or hybrid mode (realtime with automatic polling fallback)
+let config = ReloaderConfig::hybrid(10);
 let (service, rx) = ReloaderService::new(&config_path, config).await?;
 
 // Use start_with_realtime() for types implementing RealtimeWatch
@@ -161,7 +165,7 @@ tokio::spawn(async move { service.start_with_realtime().await });
 |----------|---------|----------------|---------------|-----------------|
 | **Polling** | Seconds (configurable) | Low | All data sources | KVS, databases, APIs |
 | **Realtime** | Milliseconds | Medium | File systems (with `notify`) | File-based configs |
-<!-- | **Hybrid** | Milliseconds (with fallback) | Medium | File systems (with fallback) | **Production use** | -->
+| **Hybrid** | Milliseconds (with fallback) | Medium | File systems (with `notify`) | Production use, resiliency-critical scenarios |
 
 **Note**: The core `hot_reload` library only provides trait definitions. Concrete implementations like file system monitoring with `notify` are demonstrated in the `server-bin` example.
 
@@ -180,17 +184,17 @@ This repository includes a complete working example in the `server-bin/` and `se
 
 - Complete CLI application demonstrating TOML config file hot-reloading
 - Implements `RealtimeWatch` trait for `ConfigReloader` using the `notify` crate
-- Supports CLI flag `--watch-mode` to choose between `polling` and `realtime` strategies
-- Default mode is `realtime`
+- Supports CLI flag `--watch-mode` to choose between `polling`, `realtime`, and `hybrid` strategies
+- Default mode is `hybrid`
 
 **Running the example:**
 
 ```bash
-# Build and run with realtime mode (default)
+# Build and run with hybrid mode (default)
 cargo run --package server-bin -- --config config.toml
 
 # Run with specific watch mode
-cargo run --package server-bin -- --config config.toml --watch-mode realtime|polling
+cargo run --package server-bin -- --config config.toml --watch-mode realtime|polling|hybrid
 
 # Try modifying config.toml while the server is running to see hot-reloading in action
 ```

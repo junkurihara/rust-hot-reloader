@@ -57,7 +57,7 @@ impl Server {
       Err(main_e) = self.main_service() => {
         error!("Main service exited: {}", main_e);
       },
-      // Reloader service with realtime support
+      // Reloader service with realtime / hybrid support
       Err(reloader_e) = context_reloader.start_with_realtime() => {
         error!("Reloader service exited: {}", reloader_e);
       },
