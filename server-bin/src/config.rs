@@ -22,7 +22,7 @@ pub async fn parse_opts(runtime_handle: &Handle) -> Result<(ReloaderService<Conf
   // toml file path
   let config_path = matches.get_one::<String>("config_file").unwrap();
 
-  // Setup reloader service  
+  // Setup reloader service
   let (reloader, rx) = ReloaderService::with_delay(config_path, 10).await.unwrap();
 
   // Setup server context with arbitrary config reloader's receiver
