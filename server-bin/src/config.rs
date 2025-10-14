@@ -1,29 +1,61 @@
 use crate::error::*;
 use async_trait::async_trait;
-use clap::{command, Arg};
-use hot_reload::{Reload, ReloaderError, ReloaderService, ReloadResult};
+use clap::{Arg, command};
+use hot_reload::{RealtimeWatch, RealtimeWatchHandle, Reload, ReloadResult, ReloaderError, ReloaderService, WatchEvent};
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Deserialize;
 use server_lib::{Server, ServerConfig, ServerConfigBuilder, ServerContextBuilder};
 use std::{fs, path::PathBuf, sync::Arc};
-use tokio::runtime::Handle;
+use tokio::{runtime::Handle, sync::mpsc};
+use tracing::{debug, error, warn};
 
 pub async fn parse_opts(runtime_handle: &Handle) -> Result<(ReloaderService<ConfigReloader, ServerConfig>, Server)> {
   let _ = include_str!("../Cargo.toml");
-  let options = command!().arg(
-    Arg::new("config_file")
-      .long("config")
-      .short('c')
-      .value_name("FILE")
-      .required(true)
-      .help("Configuration file path like 'config.toml'"),
-  );
+  let options = command!()
+    .arg(
+      Arg::new("config_file")
+        .long("config")
+        .short('c')
+        .value_name("FILE")
+        .required(true)
+        .help("Configuration file path like 'config.toml'"),
+    )
+    .arg(
+      Arg::new("watch_mode")
+        .long("watch-mode")
+        .short('w')
+        .value_name("MODE")
+        .default_value("realtime")
+        .help("Watch strategy: polling, or realtime (default)"),
+    );
   let matches = options.get_matches();
 
   // toml file path
   let config_path = matches.get_one::<String>("config_file").unwrap();
 
+  // Parse watch mode
+  let watch_mode = matches.get_one::<String>("watch_mode").unwrap();
+  let config = match watch_mode.as_str() {
+    "polling" => {
+      tracing::info!("Using polling mode with 10 second interval");
+      hot_reload::ReloaderConfig::polling(10)
+    }
+    "realtime" => {
+      tracing::info!("Using realtime file system monitoring");
+      hot_reload::ReloaderConfig::realtime()
+    }
+    // "hybrid" => {
+    //   tracing::info!("Using hybrid mode (realtime with polling fallback)");
+    //   hot_reload::ReloaderConfig::hybrid(10)
+    // }
+    _ => {
+      tracing::warn!("Unknown watch mode '{}', defaulting to realtime", watch_mode);
+      hot_reload::ReloaderConfig::realtime()
+    }
+  };
+
   // Setup reloader service
-  let (reloader, rx) = ReloaderService::with_delay(config_path, 10).await.unwrap();
+  let (reloader, rx) = ReloaderService::new(config_path, config).await.unwrap();
 
   // Setup server context with arbitrary config reloader's receiver
   let context = ServerContextBuilder::default()
@@ -73,5 +105,86 @@ pub struct ConfigToml {
 impl From<ConfigToml> for ServerConfig {
   fn from(val: ConfigToml) -> Self {
     ServerConfigBuilder::default().id(val.id).name(val.name).build().unwrap()
+  }
+}
+
+#[async_trait]
+impl RealtimeWatch<ServerConfig> for ConfigReloader {
+  async fn watch_realtime(&self) -> ReloadResult<RealtimeWatchHandle<ServerConfig>, ServerConfig> {
+    let (tx, rx) = mpsc::channel(100);
+    let config_path = self.config_path.clone();
+
+    let watcher = {
+      let tx = tx.clone();
+      let config_path_for_callback = config_path.clone();
+      // Get Tokio runtime handle to spawn tasks from the notify callback thread
+      let handle = Handle::current();
+
+      let mut watcher: RecommendedWatcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
+        let tx = tx.clone();
+        let config_path = config_path_for_callback.clone();
+        let handle = handle.clone();
+
+        // Spawn async task on Tokio runtime from the notify callback thread
+        handle.spawn(async move {
+          match res {
+            Ok(event) => {
+              debug!("File event: {:?}", event);
+
+              match event.kind {
+                EventKind::Modify(_) | EventKind::Create(_) => match tokio::fs::read_to_string(&config_path).await {
+                  Ok(content) => match toml::from_str::<ConfigToml>(&content) {
+                    Ok(config_toml) => {
+                      let config: ServerConfig = config_toml.into();
+                      if let Err(e) = tx.send(WatchEvent::Changed(config)).await {
+                        error!("Failed to send changed event: {}", e);
+                      }
+                    }
+                    Err(e) => {
+                      warn!("Failed to parse config file: {}", e);
+                      if let Err(e) = tx.send(WatchEvent::Error(e.to_string())).await {
+                        error!("Failed to send error event: {}", e);
+                      }
+                    }
+                  },
+                  Err(e) => {
+                    error!("Failed to read config file: {}", e);
+                    if let Err(e) = tx.send(WatchEvent::Error(e.to_string())).await {
+                      error!("Failed to send error event: {}", e);
+                    }
+                  }
+                },
+                EventKind::Remove(_) => {
+                  warn!("Config file was removed");
+                  if let Err(e) = tx.send(WatchEvent::Removed).await {
+                    error!("Failed to send removed event: {}", e);
+                  }
+                }
+                _ => {
+                  debug!("Ignoring event kind: {:?}", event.kind);
+                }
+              }
+            }
+            Err(e) => {
+              error!("Watch error: {}", e);
+              if let Err(e) = tx.send(WatchEvent::Error(e.to_string())).await {
+                error!("Failed to send error event: {}", e);
+              }
+            }
+          }
+        });
+      })
+      .map_err(|e| ReloaderError::Other(e.into()))?;
+
+      watcher
+        .watch(&config_path, RecursiveMode::NonRecursive)
+        .map_err(|e| ReloaderError::Other(e.into()))?;
+
+      watcher
+    };
+
+    debug!("File watching established for: {:?}", config_path);
+
+    Ok(RealtimeWatchHandle::with_cleanup(rx, Box::new(watcher)))
   }
 }

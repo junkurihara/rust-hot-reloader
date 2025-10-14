@@ -2,7 +2,7 @@
 pub use tracing::{debug, error, info, warn};
 
 pub fn init_logger() {
-  use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+  use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
   let format_layer = fmt::layer()
     .with_line_number(false)

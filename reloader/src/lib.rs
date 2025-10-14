@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::{
-  sync::{Mutex, watch},
+  sync::{Mutex, mpsc, watch},
   time::{Duration, sleep},
 };
 use tracing::{debug, error, info, warn};
@@ -30,6 +30,40 @@ where
 /// Type alias for a commonly used Result type
 pub type ReloadResult<T, V, S = &'static str> = Result<T, ReloaderError<V, S>>;
 
+/// Event emitted by realtime watchers
+#[derive(Debug, Clone)]
+pub enum WatchEvent<V> {
+  /// Value changed with new content
+  Changed(V),
+  /// Source was removed or became unavailable
+  Removed,
+  /// Error occurred during watching
+  Error(String),
+}
+
+/// Handle for realtime watching that receives change events
+pub struct RealtimeWatchHandle<V> {
+  /// Receiver for watch events
+  pub rx: mpsc::Receiver<WatchEvent<V>>,
+  /// Cleanup resources when dropped
+  _cleanup: Option<Box<dyn std::any::Any + Send>>,
+}
+
+impl<V> RealtimeWatchHandle<V> {
+  /// Create a new realtime watch handle
+  pub fn new(rx: mpsc::Receiver<WatchEvent<V>>) -> Self {
+    Self { rx, _cleanup: None }
+  }
+
+  /// Create a new realtime watch handle with cleanup resource
+  pub fn with_cleanup(rx: mpsc::Receiver<WatchEvent<V>>, cleanup: Box<dyn std::any::Any + Send>) -> Self {
+    Self {
+      rx,
+      _cleanup: Some(cleanup),
+    }
+  }
+}
+
 /// Trait defining the responsibility of reloaders to periodically load target values from a source.
 ///
 /// The source can be a file, KVS, or any other data source that implements this trait.
@@ -49,6 +83,22 @@ where
 
   /// Reload the target value from the source
   async fn reload(&self) -> ReloadResult<Option<V>, V, S>;
+}
+
+/// Trait for reloaders that support realtime event-based monitoring.
+///
+/// This trait extends `Reload` to provide efficient, event-driven updates
+/// for data sources that support change notifications (e.g., file system events).
+#[async_trait]
+pub trait RealtimeWatch<V, S = &'static str>: Reload<V, S>
+where
+  V: Eq + PartialEq,
+  S: Into<std::borrow::Cow<'static, str>> + std::fmt::Display,
+{
+  /// Set up realtime watching for the data source
+  ///
+  /// Returns a handle that receives change notifications as they occur.
+  async fn watch_realtime(&self) -> ReloadResult<RealtimeWatchHandle<V>, V, S>;
 }
 
 /// Sender wrapper for broadcasting reloaded values to receivers
@@ -104,13 +154,32 @@ where
   }
 }
 
+/// Strategy for watching and reloading target values
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WatchStrategy {
+  /// Use polling-based monitoring (default, works for all data sources)
+  Polling,
+  /// Use realtime event-based monitoring (requires RealtimeWatch implementation)
+  Realtime,
+  // /// Try realtime monitoring first, fall back to polling on error
+  // Hybrid,
+}
+
+impl Default for WatchStrategy {
+  fn default() -> Self {
+    Self::Polling
+  }
+}
+
 /// Configuration for the reloader service
 #[derive(Debug, Clone)]
 pub struct ReloaderConfig {
-  /// Period between reload attempts in seconds
+  /// Period between reload attempts in seconds (used in Polling mode)
   pub watch_delay_sec: u32,
   /// If true, broadcast updates even when values haven't changed
   pub force_reload: bool,
+  /// Strategy for watching the target value
+  pub strategy: WatchStrategy,
 }
 
 impl Default for ReloaderConfig {
@@ -118,8 +187,38 @@ impl Default for ReloaderConfig {
     Self {
       watch_delay_sec: 10,
       force_reload: false,
+      strategy: WatchStrategy::Polling,
     }
   }
+}
+
+impl ReloaderConfig {
+  /// Create a config with polling strategy
+  pub fn polling(watch_delay_sec: u32) -> Self {
+    Self {
+      watch_delay_sec,
+      force_reload: false,
+      strategy: WatchStrategy::Polling,
+    }
+  }
+
+  /// Create a config with realtime strategy
+  pub fn realtime() -> Self {
+    Self {
+      watch_delay_sec: 10, // Used as fallback in case of errors
+      force_reload: false,
+      strategy: WatchStrategy::Realtime,
+    }
+  }
+
+  // /// Create a config with hybrid strategy (recommended)
+  // pub fn hybrid(watch_delay_sec: u32) -> Self {
+  //   Self {
+  //     watch_delay_sec,
+  //     force_reload: false,
+  //     strategy: WatchStrategy::Hybrid,
+  //   }
+  // }
 }
 
 /// Main service for watching and reloading target values from a source.
@@ -204,14 +303,31 @@ where
       ReloaderConfig {
         watch_delay_sec,
         force_reload: false,
+        strategy: WatchStrategy::Polling,
       },
     )
     .await
   }
 
-  /// Start the reloader service watching the target value
+  /// Start the reloader service watching the target value (polling mode only)
   pub async fn start(&self) -> ReloadResult<(), V, S> {
-    debug!("Starting reloader service");
+    match self.config.strategy {
+      WatchStrategy::Polling => {
+        info!("Starting reloader service in polling mode");
+        self.start_polling().await
+      }
+      _ => {
+        error!("Realtime mode requires RealtimeWatch trait. Use start_with_realtime() instead.");
+        Err(ReloaderError::Other(anyhow::anyhow!(
+          "Realtime strategy requires RealtimeWatch implementation. Use start_with_realtime() for types implementing RealtimeWatch."
+        )))
+      }
+    }
+  }
+
+  /// Start the service in polling mode
+  async fn start_polling(&self) -> ReloadResult<(), V, S> {
+    debug!("Polling mode active");
 
     loop {
       match self.reload_cycle().await {
@@ -229,6 +345,111 @@ where
       self.sleep_delay().await;
     }
 
+    Ok(())
+  }
+
+  /// Start the service in realtime mode
+  async fn start_realtime(&self) -> ReloadResult<(), V, S>
+  where
+    T: RealtimeWatch<V, S>,
+  {
+    // Load initial value before starting realtime watching
+    debug!("Loading initial value before starting realtime mode");
+    match self.reload_cycle().await {
+      Ok(should_continue) => {
+        if !should_continue {
+          return Ok(());
+        }
+      }
+      Err(e) => {
+        error!("Critical error in initial value loading: {}", e);
+        return Err(e);
+      }
+    }
+
+    let mut handle = self.reloader.watch_realtime().await?;
+    debug!("Realtime watching established");
+
+    loop {
+      match handle.rx.recv().await {
+        Some(event) => {
+          if let Err(e) = self.handle_watch_event(event).await {
+            error!("Error handling watch event: {}", e);
+          }
+        }
+        None => {
+          warn!("Realtime watch channel closed");
+          break;
+        }
+      }
+    }
+
+    Ok(())
+  }
+
+  // /// Start the service in hybrid mode (realtime with polling fallback)
+  // async fn start_hybrid(&self) -> ReloadResult<(), V, S>
+  // where
+  //   T: RealtimeWatch<V, S>,
+  // {
+  //   // Load initial value before starting realtime watching
+  //   debug!("Loading initial value before starting hybrid mode");
+  //   match self.reload_cycle().await {
+  //     Ok(should_continue) => {
+  //       if !should_continue {
+  //         return Ok(());
+  //       }
+  //     }
+  //     Err(e) => {
+  //       error!("Critical error in initial value loading: {}", e);
+  //       return Err(e);
+  //     }
+  //   }
+
+  //   match self.reloader.watch_realtime().await {
+  //     Ok(mut handle) => {
+  //       info!("Realtime watching established, monitoring for changes");
+
+  //       loop {
+  //         match handle.rx.recv().await {
+  //           Some(event) => {
+  //             if let Err(e) = self.handle_watch_event(event).await {
+  //               error!("Error handling watch event: {}", e);
+  //             }
+  //           }
+  //           None => {
+  //             warn!("Realtime watch channel closed, falling back to polling");
+  //             break;
+  //           }
+  //         }
+  //       }
+  //     }
+  //     Err(e) => {
+  //       warn!("Failed to establish realtime watching: {}, falling back to polling", e);
+  //     }
+  //   }
+
+  //   self.start_polling().await
+  // }
+
+  /// Handle a watch event from realtime monitoring
+  async fn handle_watch_event(&self, event: WatchEvent<V>) -> ReloadResult<(), V, S> {
+    match event {
+      WatchEvent::Changed(value) => {
+        debug!("Received change event");
+        if self.should_broadcast_update(&value).await? {
+          self.broadcast_update(value).await?;
+        } else {
+          debug!("Value unchanged, skipping broadcast");
+        }
+      }
+      WatchEvent::Removed => {
+        warn!("Watch target was removed");
+      }
+      WatchEvent::Error(err) => {
+        error!("Watch error: {}", err);
+      }
+    }
     Ok(())
   }
 
@@ -291,5 +512,34 @@ where
   /// Sleep for the configured delay period
   async fn sleep_delay(&self) {
     sleep(Duration::from_secs(self.config.watch_delay_sec.into())).await;
+  }
+}
+
+/// Additional methods for ReloaderService when T implements RealtimeWatch
+impl<T, V, S> ReloaderService<T, V, S>
+where
+  T: RealtimeWatch<V, S> + Clone,
+  V: Eq + PartialEq + Clone,
+  S: Into<std::borrow::Cow<'static, str>> + std::fmt::Display,
+{
+  /// Start the reloader service with realtime support
+  ///
+  /// This method is available when T implements RealtimeWatch trait.
+  /// It respects the configured strategy (Polling or Realtime).
+  pub async fn start_with_realtime(&self) -> ReloadResult<(), V, S> {
+    match self.config.strategy {
+      WatchStrategy::Polling => {
+        info!("Starting reloader service in polling mode");
+        self.start_polling().await
+      }
+      WatchStrategy::Realtime => {
+        info!("Starting reloader service in realtime mode");
+        self.start_realtime().await
+      }
+      // WatchStrategy::Hybrid => {
+      //   info!("Starting reloader service in hybrid mode");
+      //   self.start_hybrid().await
+      // }
+    }
   }
 }
