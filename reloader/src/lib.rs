@@ -9,10 +9,15 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::{
-  sync::{Mutex, mpsc, watch},
+  sync::{Mutex, watch},
   time::{Duration, sleep},
 };
 use tracing::{debug, error, info, warn};
+
+pub use realtime::{
+  RealtimeWatch,
+  RealtimeWatchHandle,
+};
 
 /// Default delay between reload attempts in seconds
 const DEFAULT_WATCH_DELAY_SEC: u32 = 10;
@@ -51,28 +56,6 @@ pub enum WatchEvent<V> {
   Error(String),
 }
 
-/// Handle for realtime watching that receives change events
-pub struct RealtimeWatchHandle<V> {
-  /// Receiver for watch events
-  pub rx: mpsc::Receiver<WatchEvent<V>>,
-  /// Cleanup resources when dropped
-  _cleanup: Option<Box<dyn std::any::Any + Send>>,
-}
-
-impl<V> RealtimeWatchHandle<V> {
-  /// Create a new realtime watch handle
-  pub fn new(rx: mpsc::Receiver<WatchEvent<V>>) -> Self {
-    Self { rx, _cleanup: None }
-  }
-
-  /// Create a new realtime watch handle with cleanup resource
-  pub fn with_cleanup(rx: mpsc::Receiver<WatchEvent<V>>, cleanup: Box<dyn std::any::Any + Send>) -> Self {
-    Self {
-      rx,
-      _cleanup: Some(cleanup),
-    }
-  }
-}
 
 /// Trait defining the responsibility of reloaders to periodically load target values from a source.
 ///
@@ -93,22 +76,6 @@ where
 
   /// Reload the target value from the source
   async fn reload(&self) -> ReloadResult<Option<V>, V, S>;
-}
-
-/// Trait for reloaders that support realtime event-based monitoring.
-///
-/// This trait extends `Reload` to provide efficient, event-driven updates
-/// for data sources that support change notifications (e.g., file system events).
-#[async_trait]
-pub trait RealtimeWatch<V, S = &'static str>: Reload<V, S>
-where
-  V: Eq + PartialEq,
-  S: Into<std::borrow::Cow<'static, str>> + std::fmt::Display,
-{
-  /// Set up realtime watching for the data source
-  ///
-  /// Returns a handle that receives change notifications as they occur.
-  async fn watch_realtime(&self) -> ReloadResult<RealtimeWatchHandle<V>, V, S>;
 }
 
 /// Sender wrapper for broadcasting reloaded values to receivers

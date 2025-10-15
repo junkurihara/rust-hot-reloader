@@ -1,15 +1,58 @@
 use anyhow::anyhow;
 use tracing::{debug, error, info, warn};
+use tokio::{
+  sync::mpsc,
+};
+use async_trait::async_trait;
 
 use super::{
+  Reload,
   ReloadResult,
   ReloaderError,
   ReloaderService,
-  RealtimeWatch,
-  RealtimeWatchHandle,
   WatchEvent,
   WatchStrategy,
 };
+
+/// Handle for realtime watching that receives change events
+pub struct RealtimeWatchHandle<V> {
+  /// Receiver for watch events
+  pub rx: mpsc::Receiver<WatchEvent<V>>,
+  /// Cleanup resources when dropped
+  _cleanup: Option<Box<dyn std::any::Any + Send>>,
+}
+
+impl<V> RealtimeWatchHandle<V> {
+  /// Create a new realtime watch handle
+  pub fn new(rx: mpsc::Receiver<WatchEvent<V>>) -> Self {
+    Self { rx, _cleanup: None }
+  }
+
+  /// Create a new realtime watch handle with cleanup resource
+  pub fn with_cleanup(rx: mpsc::Receiver<WatchEvent<V>>, cleanup: Box<dyn std::any::Any + Send>) -> Self {
+    Self {
+      rx,
+      _cleanup: Some(cleanup),
+    }
+  }
+}
+
+/// Trait for reloaders that support realtime event-based monitoring.
+///
+/// This trait extends `Reload` to provide efficient, event-driven updates
+/// for data sources that support change notifications (e.g., file system events).
+#[async_trait]
+pub trait RealtimeWatch<V, S = &'static str>: Reload<V, S>
+where
+  V: Eq + PartialEq,
+  S: Into<std::borrow::Cow<'static, str>> + std::fmt::Display,
+{
+  /// Set up realtime watching for the data source
+  ///
+  /// Returns a handle that receives change notifications as they occur.
+  async fn watch_realtime(&self) -> ReloadResult<RealtimeWatchHandle<V>, V, S>;
+}
+
 
 /// Extension methods that cover realtime and hybrid watching strategies.
 impl<T, V, S> ReloaderService<T, V, S>
