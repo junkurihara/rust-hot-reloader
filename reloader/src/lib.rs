@@ -14,10 +14,7 @@ use tokio::{
 };
 use tracing::{debug, error, info, warn};
 
-pub use realtime::{
-  RealtimeWatch,
-  RealtimeWatchHandle,
-};
+pub use realtime::{RealtimeWatch, RealtimeWatchHandle};
 
 /// Default delay between reload attempts in seconds
 const DEFAULT_WATCH_DELAY_SEC: u32 = 10;
@@ -55,7 +52,6 @@ pub enum WatchEvent<V> {
   /// Error occurred during watching
   Error(String),
 }
-
 
 /// Trait defining the responsibility of reloaders to periodically load target values from a source.
 ///
@@ -370,10 +366,12 @@ where
       return Ok(true);
     }
 
-    let current_value = self.current_value.lock().await;
-    let should_update = match current_value.as_ref() {
-      Some(old_value) => old_value != target,
-      None => true, // First load
+    let should_update = {
+      let current_value = self.current_value.lock().await;
+      match current_value.as_ref() {
+        Some(old_value) => old_value != target,
+        None => true, // First load
+      }
     };
 
     Ok(should_update)
@@ -383,9 +381,7 @@ where
   async fn broadcast_update(&self, target: V) -> ReloadResult<(), V, S> {
     info!("Target reloaded. Broadcasting updated value");
 
-    self.tx
-      .send(Some(target.clone()))
-      .map_err(ReloaderError::WatchSendError)?;
+    self.tx.send(Some(target.clone())).map_err(ReloaderError::WatchSendError)?;
 
     {
       let mut current_value = self.current_value.lock().await;
