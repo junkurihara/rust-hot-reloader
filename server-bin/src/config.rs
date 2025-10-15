@@ -143,7 +143,7 @@ async fn queue_debounced_event(
   tx: mpsc::Sender<WatchEvent<ServerConfig>>,
   config_path: PathBuf,
 ) {
-  let event_id = debounce_counter.fetch_add(1, Ordering::Relaxed) + 1;
+  let event_id = debounce_counter.fetch_add(1, Ordering::AcqRel) + 1;
 
   {
     let mut slot = latest_event.lock().await;
@@ -152,7 +152,7 @@ async fn queue_debounced_event(
 
   tokio::time::sleep(FILE_EVENT_DEBOUNCE).await;
 
-  if debounce_counter.load(Ordering::Relaxed) != event_id {
+  if debounce_counter.load(Ordering::Acquire) != event_id {
     return;
   }
 

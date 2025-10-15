@@ -366,12 +366,10 @@ where
       return Ok(true);
     }
 
-    let should_update = {
-      let current_value = self.current_value.lock().await;
-      match current_value.as_ref() {
-        Some(old_value) => old_value != target,
-        None => true, // First load
-      }
+    let current_value = self.current_value.lock().await;
+    let should_update = match current_value.as_ref() {
+      Some(old_value) => old_value != target,
+      None => true, // First load
     };
 
     Ok(should_update)
