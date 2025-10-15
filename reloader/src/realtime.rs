@@ -1,18 +1,15 @@
+use super::{Reload, ReloadResult, ReloaderError, ReloaderService, WatchEvent, WatchStrategy};
 use anyhow::anyhow;
-use tracing::{debug, error, info, warn};
+use async_trait::async_trait;
+use std::cmp;
 use tokio::{
   sync::mpsc,
+  time::{Duration, sleep},
 };
-use async_trait::async_trait;
+use tracing::{debug, error, info, warn};
 
-use super::{
-  Reload,
-  ReloadResult,
-  ReloaderError,
-  ReloaderService,
-  WatchEvent,
-  WatchStrategy,
-};
+/// Maximum backoff multiplier for hybrid mode polling fallback
+const HYBRID_MAX_BACKOFF_MULTIPLIER: u32 = 8;
 
 /// Handle for realtime watching that receives change events
 pub struct RealtimeWatchHandle<V> {
@@ -52,7 +49,6 @@ where
   /// Returns a handle that receives change notifications as they occur.
   async fn watch_realtime(&self) -> ReloadResult<RealtimeWatchHandle<V>, V, S>;
 }
-
 
 /// Extension methods that cover realtime and hybrid watching strategies.
 impl<T, V, S> ReloaderService<T, V, S>
@@ -154,8 +150,14 @@ where
   }
 
   /// Polling fallback that keeps watching until realtime monitoring is available again.
+  /// To avoid busy looping, it uses exponential backoff starting from the configured watch delay.
   async fn run_polling_fallback(&self) -> ReloadResult<Option<RealtimeWatchHandle<V>>, V, S> {
     info!("Entering polling fallback mode");
+
+    let base_delay_secs = self.config.watch_delay_sec.max(1);
+    let base_delay = Duration::from_secs(base_delay_secs.into());
+    let max_backoff = base_delay.saturating_mul(HYBRID_MAX_BACKOFF_MULTIPLIER);
+    let mut current_delay = base_delay;
 
     loop {
       if !self.execute_reload_cycle("polling fallback reload").await? {
@@ -169,11 +171,12 @@ where
           return Ok(Some(handle));
         }
         Err(e) => {
-          warn!("Realtime watching still unavailable: {}", e);
+          warn!("Realtime watching still unavailable: {}. Retrying in {:?}", e, current_delay);
         }
       }
 
-      self.sleep_delay().await;
+      sleep(current_delay).await;
+      current_delay = cmp::min(current_delay.saturating_mul(2), max_backoff);
     }
   }
 
