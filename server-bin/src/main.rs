@@ -23,6 +23,6 @@ fn main() {
       }
     };
 
-    server.entrypoint(reloader).await.unwrap()
+    server.entrypoint_with_realtime(reloader).await.unwrap()
   });
 }
