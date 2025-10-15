@@ -20,6 +20,10 @@ use tokio::{
 };
 use tracing::{debug, error, warn};
 
+/// Default channel size for mpsc channels
+const DEFAULT_CHANNEL_SIZE: usize = 100;
+
+/// Parse command line options and setup configuration reloader and server context.
 pub async fn parse_opts(runtime_handle: &Handle) -> Result<(ReloaderService<ConfigReloader, ServerConfig>, Server)> {
   let _ = include_str!("../Cargo.toml");
   let options = command!()
@@ -108,6 +112,7 @@ impl Reload<ServerConfig> for ConfigReloader {
 }
 
 #[derive(Debug, Default, Deserialize, Clone)]
+/// Intermediate struct to deserialize the TOML configuration.
 pub struct ConfigToml {
   pub id: u32,
   pub name: String,
@@ -119,15 +124,18 @@ impl From<ConfigToml> for ServerConfig {
   }
 }
 
+/// Duration to debounce rapid successive file events.
 const FILE_EVENT_DEBOUNCE: Duration = Duration::from_millis(200);
 
 #[derive(Debug)]
+/// Simple enum to represent debounced file events.
 enum DebouncedEvent {
   Reload,
   Removed,
   Error(String),
 }
 
+/// Queue and debounce file events to avoid rapid successive reloads.
 async fn queue_debounced_event(
   event: DebouncedEvent,
   debounce_counter: Arc<AtomicU64>,
@@ -167,6 +175,7 @@ async fn queue_debounced_event(
   }
 }
 
+/// Handle a debounced file event by reading and parsing the config file, then sending appropriate events.
 async fn handle_debounced_event(event: DebouncedEvent, tx: &mpsc::Sender<WatchEvent<ServerConfig>>, config_path: &PathBuf) {
   match event {
     DebouncedEvent::Reload => match tokio::fs::read_to_string(config_path).await {
@@ -209,8 +218,9 @@ async fn handle_debounced_event(event: DebouncedEvent, tx: &mpsc::Sender<WatchEv
 
 #[async_trait]
 impl RealtimeWatch<ServerConfig> for ConfigReloader {
+  /// Establish a file watcher on the configuration file path.
   async fn watch_realtime(&self) -> ReloadResult<RealtimeWatchHandle<ServerConfig>, ServerConfig> {
-    let (tx, rx) = mpsc::channel(100);
+    let (tx, rx) = mpsc::channel(DEFAULT_CHANNEL_SIZE);
     let config_path = self.config_path.clone();
     let debounce_counter = Arc::new(AtomicU64::new(0));
     let latest_event = Arc::new(Mutex::new(None::<(u64, DebouncedEvent)>));
