@@ -78,12 +78,15 @@ pub struct ReloaderConfig {
 
 The service provides several convenience methods:
 
-- `with_defaults()`: Uses default config (10 second polling, no force reload)
-- `with_delay(delay_sec)`: Custom delay with polling
+- `ReloaderService::with_defaults()`: Uses default config (10 second polling, no force reload)
+- `ReloaderService::with_delay(delay_sec)`: Custom delay with polling
+- `ReloaderService::new(source, config)`: Full control over configuration
+
+Strategies can be set using:
+
 - `ReloaderConfig::polling(delay_sec)`: Polling strategy
 - `ReloaderConfig::realtime()`: Realtime strategy
 - `ReloaderConfig::hybrid(delay_sec)`: Hybrid strategy (recommended)
-- `new(source, config)`: Full control over configuration
 
 ## Usage
 

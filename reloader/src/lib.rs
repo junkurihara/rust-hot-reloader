@@ -1,3 +1,10 @@
+//! Core abstractions for building hot-reloadable data sources in async Rust.
+//!
+//! Exposes traits for periodic reloaders as well as realtime watch helpers,
+//! making it easier to integrate dynamic configuration and other live-updating
+//! values into asynchronous applications.
+mod realtime;
+
 use async_trait::async_trait;
 use std::sync::Arc;
 use thiserror::Error;
@@ -7,7 +14,8 @@ use tokio::{
 };
 use tracing::{debug, error, info, warn};
 
-mod realtime;
+/// Default delay between reload attempts in seconds
+const DEFAULT_WATCH_DELAY_SEC: u32 = 10;
 
 /// Errors that can occur during reloading operations
 #[derive(Debug, Error)]
@@ -187,7 +195,7 @@ pub struct ReloaderConfig {
 impl Default for ReloaderConfig {
   fn default() -> Self {
     Self {
-      watch_delay_sec: 10,
+      watch_delay_sec: DEFAULT_WATCH_DELAY_SEC,
       force_reload: false,
       strategy: WatchStrategy::Polling,
     }
@@ -207,7 +215,7 @@ impl ReloaderConfig {
   /// Create a config with realtime strategy
   pub fn realtime() -> Self {
     Self {
-      watch_delay_sec: 10, // Used as fallback in case of errors
+      watch_delay_sec: DEFAULT_WATCH_DELAY_SEC, // Used as fallback in case of errors
       force_reload: false,
       strategy: WatchStrategy::Realtime,
     }
@@ -392,20 +400,14 @@ where
   /// Check if we should broadcast an update for the given target
   async fn should_broadcast_update(&self, target: &V) -> ReloadResult<bool, V, S> {
     if self.config.force_reload {
-      let mut current_value = self.current_value.lock().await;
-      *current_value = Some(target.clone());
       return Ok(true);
     }
 
-    let mut current_value = self.current_value.lock().await;
+    let current_value = self.current_value.lock().await;
     let should_update = match current_value.as_ref() {
       Some(old_value) => old_value != target,
       None => true, // First load
     };
-
-    if should_update {
-      *current_value = Some(target.clone());
-    }
 
     Ok(should_update)
   }
@@ -414,7 +416,14 @@ where
   async fn broadcast_update(&self, target: V) -> ReloadResult<(), V, S> {
     info!("Target reloaded. Broadcasting updated value");
 
-    self.tx.send(Some(target)).map_err(ReloaderError::WatchSendError)?;
+    self.tx
+      .send(Some(target.clone()))
+      .map_err(ReloaderError::WatchSendError)?;
+
+    {
+      let mut current_value = self.current_value.lock().await;
+      *current_value = Some(target);
+    }
 
     Ok(())
   }
@@ -423,12 +432,12 @@ where
   async fn broadcast_removal(&self) -> ReloadResult<(), V, S> {
     info!("Target removed. Broadcasting empty value");
 
+    self.tx.send(None).map_err(ReloaderError::WatchSendError)?;
+
     {
       let mut current_value = self.current_value.lock().await;
       *current_value = None;
     }
-
-    self.tx.send(None).map_err(ReloaderError::WatchSendError)?;
 
     Ok(())
   }
