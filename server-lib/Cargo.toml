@@ -11,7 +11,7 @@ hot_reload = { path = "../reloader/" }
 derive_builder = "0.20.2"
 anyhow = "1.0.100"
 thiserror = "2.0.17"
-tokio = { version = "1.47.1", default-features = false, features = [
+tokio = { version = "1.48.0", default-features = false, features = [
   "rt-multi-thread",
   "macros",
 ] }

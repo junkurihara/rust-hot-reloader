@@ -1,7 +1,7 @@
 [package]
 name = "hot_reload"
 description = "Trait and service definition of periodic hot reloader and notifier for config-file, KVS, etc."
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 repository = "https://github.com/junkurihara/rust-hot-reloader"
 authors = ["Jun Kurihara"]
@@ -12,7 +12,7 @@ categories = ["filesystem", "rust-patterns"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tokio = { version = "1.47.1", default-features = false, features = [
+tokio = { version = "1.48.0", default-features = false, features = [
   "time",
   "sync",
 ] }
