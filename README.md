@@ -170,7 +170,87 @@ tokio::spawn(async move { service.start_with_realtime().await });
 | **Realtime** | Milliseconds | Medium | File systems (with `notify`) | File-based configs |
 | **Hybrid** | Milliseconds (with fallback) | Medium | File systems (with `notify`) | Production use, resiliency-critical scenarios |
 
-**Note**: The core `hot_reload` library only provides trait definitions. Concrete implementations like file system monitoring with `notify` are demonstrated in the `server-bin` example.
+**Note**: The core library now includes a built-in `FileReloader` implementation when the `file-reloader` feature is enabled (see below). The `server-bin` example demonstrates additional patterns for custom implementations.
+
+## Built-in FileReloader (Feature: `file-reloader`)
+
+The library provides a ready-to-use `FileReloader` implementation for file-based data sources with built-in realtime monitoring support.
+
+### Enabling the Feature
+
+Add this to your `Cargo.toml`:
+
+```toml
+[dependencies]
+hot_reload = { version = "0.3", features = ["file-reloader"] }
+```
+
+### Using FileReloader
+
+The `FileReloader` is a generic implementation that works with any type implementing the required traits:
+
+```rust
+use hot_reload::{FileReloader, ReloaderService, ReloaderConfig, AsyncFileLoad};
+use std::path::Path;
+
+// Implement AsyncFileLoad for your config type
+#[async_trait]
+impl AsyncFileLoad for ServerConfig {
+  type Error = anyhow::Error;
+
+  async fn async_load_from<T>(path: T) -> Result<Self, Self::Error>
+  where
+    T: AsRef<Path> + Send,
+  {
+    let content = tokio::fs::read_to_string(path).await?;
+    let config = toml::from_str(&content)?;
+    Ok(config)
+  }
+}
+
+// Also implement TryFrom<&PathBuf> for synchronous reload support
+impl TryFrom<&PathBuf> for ServerConfig {
+  type Error = anyhow::Error;
+
+  fn try_from(path: &PathBuf) -> Result<Self, Self::Error> {
+    let content = std::fs::read_to_string(path)?;
+    let config = toml::from_str(&content)?;
+    Ok(config)
+  }
+}
+
+// Create and use the FileReloader
+let config = ReloaderConfig::hybrid(10);
+let (service, mut rx) = ReloaderService::<FileReloader<ServerConfig>, ServerConfig, String>::new(
+  &config_path,
+  config,
+).await?;
+
+// Start with realtime monitoring
+tokio::spawn(async move { service.start_with_realtime().await });
+```
+
+### Features of FileReloader
+
+The `FileReloader` implementation includes:
+
+- **Automatic Debouncing**: File system events are debounced (200ms window) to avoid redundant reloads when multiple events fire for a single logical change
+- **Event Filtering**: Only processes relevant events (Create, Modify, Remove) and ignores metadata-only changes
+- **Thread-Safe**: Uses atomic operations and proper synchronization for concurrent access
+- **Async Integration**: Bridges synchronous `notify` callbacks with async Tokio runtime seamlessly
+- **Resource Cleanup**: Automatically manages the file watcher lifecycle via RAII
+
+### How Debouncing Works
+
+The `FileReloader` uses a sophisticated debouncing algorithm:
+
+1. Each file event is assigned a unique ID using an atomic counter
+2. Events are stored with their IDs in a shared slot
+3. After a 200ms delay, the system checks if the event ID is still the latest
+4. Only the most recent event in a rapid succession is processed
+5. Older events are automatically discarded
+
+This ensures that even when file system events fire multiple times (e.g., write + metadata update), only one reload occurs.
 
 ## Example Implementation
 
@@ -186,9 +266,10 @@ This repository includes a complete working example in the `server-bin/` and `se
 ### `server-bin/`
 
 - Complete CLI application demonstrating TOML config file hot-reloading
-- Implements `RealtimeWatch` trait for `ConfigReloader` using the `notify` crate
+- Shows custom implementation of `RealtimeWatch` trait for `ConfigReloader` using the `notify` crate
 - Supports CLI flag `--watch-mode` to choose between `polling`, `realtime`, and `hybrid` strategies
 - Default mode is `hybrid`
+- Demonstrates patterns beyond the built-in `FileReloader` for more complex use cases
 
 **Running the example:**
 
