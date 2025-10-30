@@ -79,6 +79,9 @@ where
   async fn reload(&self) -> ReloadResult<Option<V>, V, S>;
 }
 
+/* ---------------------------------------------------------- */
+// Channel Wrappers for Broadcasting Reloaded Values
+
 /// Sender wrapper for broadcasting reloaded values to receivers
 pub struct ReloaderSender<V>
 where
@@ -105,6 +108,8 @@ where
   S: Into<std::borrow::Cow<'static, str>> + std::fmt::Display,
 {
   inner: watch::Receiver<Option<V>>,
+  /// PhantomData is used to mark this type as logically owning S without actually storing it.
+  /// This ensures proper variance and drop check behavior for the generic type parameter S.
   _phantom: std::marker::PhantomData<S>,
 }
 
@@ -131,6 +136,9 @@ where
     self.inner.borrow().clone()
   }
 }
+
+/* ---------------------------------------------------------- */
+// Watch Strategy Configuration
 
 /// Strategy for watching and reloading target values
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -199,6 +207,9 @@ impl ReloaderConfig {
   }
 }
 
+/* ---------------------------------------------------------- */
+// Main Reloader Service
+
 /// Main service for watching and reloading target values from a source.
 ///
 /// # Example
@@ -234,6 +245,8 @@ where
   current_value: Arc<Mutex<Option<V>>>,
   tx: ReloaderSender<V>,
   config: ReloaderConfig,
+  /// PhantomData is used to mark this type as logically owning S without actually storing it.
+  /// This ensures proper variance and drop check behavior for the generic type parameter S.
   _phantom: std::marker::PhantomData<S>,
 }
 
@@ -243,6 +256,9 @@ where
   V: Eq + PartialEq + Clone,
   S: Into<std::borrow::Cow<'static, str>> + std::fmt::Display,
 {
+  /* -------------------- */
+  // Public API: Service Creation
+
   /// Create a new reloader service with the given configuration
   pub async fn new(
     source: &<T as Reload<V, S>>::Source,
@@ -287,6 +303,9 @@ where
     .await
   }
 
+  /* -------------------- */
+  // Public API: Service Entry Points
+
   /// Start the reloader service watching the target value (polling mode only)
   pub async fn start(&self) -> ReloadResult<(), V, S> {
     match self.config.strategy {
@@ -302,6 +321,9 @@ where
       }
     }
   }
+
+  /* -------------------- */
+  // Internal: Polling Mode Implementation
 
   /// Start the service in polling mode
   async fn start_polling(&self) -> ReloadResult<(), V, S> {
@@ -326,7 +348,11 @@ where
     Ok(())
   }
 
-  /// Execute a single reload cycle with contextual logging
+  /* -------------------- */
+  // Internal: Reload Cycle Management
+
+  /// Execute a single reload cycle with contextual logging.
+  /// Returns `Ok(true)` if the service should continue, `Ok(false)` if it should stop.
   async fn execute_reload_cycle(&self, context: &str) -> ReloadResult<bool, V, S> {
     match self.reload_cycle().await {
       Ok(should_continue) => Ok(should_continue),
@@ -337,7 +363,9 @@ where
     }
   }
 
-  /// Execute one reload cycle
+  /// Execute one reload cycle.
+  /// Attempts to reload the target value and broadcasts updates if the value changed.
+  /// Returns `Ok(true)` to continue the service loop.
   async fn reload_cycle(&self) -> ReloadResult<bool, V, S> {
     let target = match self.try_reload().await {
       Ok(Some(target)) => target,
@@ -360,12 +388,16 @@ where
     Ok(true)
   }
 
+  /* -------------------- */
+  // Internal: Value Loading and Broadcasting
+
   /// Attempt to reload the target value
   async fn try_reload(&self) -> ReloadResult<Option<V>, V, S> {
     self.reloader.reload().await
   }
 
-  /// Check if we should broadcast an update for the given target
+  /// Check if we should broadcast an update for the given target.
+  /// Returns `true` if `force_reload` is enabled, the value has changed, or this is the first load.
   async fn should_broadcast_update(&self, target: &V) -> ReloadResult<bool, V, S> {
     if self.config.force_reload {
       return Ok(true);
@@ -374,17 +406,21 @@ where
     let current_value = self.current_value.lock().await;
     let should_update = match current_value.as_ref() {
       Some(old_value) => old_value != target,
-      None => true, // First load
+      None => true,
     };
 
     Ok(should_update)
   }
 
-  /// Broadcast the updated value to all receivers
+  /// Broadcast the updated value to all receivers.
+  /// This sends the new value through the watch channel and updates the cached current value.
   async fn broadcast_update(&self, target: V) -> ReloadResult<(), V, S> {
     info!("Target reloaded. Broadcasting updated value");
 
-    self.tx.send(Some(target.clone())).map_err(ReloaderError::WatchSendError)?;
+    self
+      .tx
+      .send(Some(target.clone()))
+      .map_err(ReloaderError::WatchSendError)?;
 
     {
       let mut current_value = self.current_value.lock().await;
@@ -394,7 +430,8 @@ where
     Ok(())
   }
 
-  /// Broadcast a removal event to all receivers
+  /// Broadcast a removal event to all receivers.
+  /// This indicates that the target data source has been removed or become unavailable.
   async fn broadcast_removal(&self) -> ReloadResult<(), V, S> {
     info!("Target removed. Broadcasting empty value");
 
@@ -407,6 +444,9 @@ where
 
     Ok(())
   }
+
+  /* -------------------- */
+  // Internal: Utility Methods
 
   /// Sleep for the configured delay period
   async fn sleep_delay(&self) {
