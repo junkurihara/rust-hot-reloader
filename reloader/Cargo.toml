@@ -11,6 +11,10 @@ categories = ["filesystem", "rust-patterns"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+default = []
+file-reloader = ["notify"]
+
 [dependencies]
 tokio = { version = "1.48.0", default-features = false, features = [
   "time",
@@ -20,3 +24,4 @@ async-trait = "0.1.89"
 tracing = "0.1.41"
 thiserror = "2.0.17"
 anyhow = "1.0.100"
+notify = { version = "*", optional = true }

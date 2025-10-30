@@ -11,7 +11,7 @@ publish = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-hot_reload = { path = "../reloader/" }
+hot_reload = { path = "../reloader/", features = ["file-reloader"] }
 server-lib = { path = "../server-lib/" }
 
 # launch options
