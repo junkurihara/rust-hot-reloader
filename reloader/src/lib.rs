@@ -5,6 +5,9 @@
 //! values into asynchronous applications.
 mod realtime;
 
+#[cfg(feature = "file-reloader")]
+pub mod file_reloader;
+
 use async_trait::async_trait;
 use std::sync::Arc;
 use thiserror::Error;
@@ -14,6 +17,8 @@ use tokio::{
 };
 use tracing::{debug, error, info, warn};
 
+#[cfg(feature = "file-reloader")]
+pub use file_reloader::{AsyncFileLoad, FileReloader};
 pub use realtime::{RealtimeWatch, RealtimeWatchHandle};
 
 /// Default delay between reload attempts in seconds

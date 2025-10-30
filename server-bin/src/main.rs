@@ -22,7 +22,6 @@ fn main() {
         std::process::exit(1);
       }
     };
-
     server.entrypoint_with_realtime(reloader).await.unwrap()
   });
 }

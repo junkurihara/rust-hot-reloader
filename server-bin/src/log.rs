@@ -2,7 +2,8 @@
 pub use tracing::{debug, error, info, warn};
 
 pub fn init_logger() {
-  use tracing_subscriber::{EnvFilter, fmt, prelude::*};
+  use std::str::FromStr;
+  use tracing_subscriber::{fmt, prelude::*};
 
   let format_layer = fmt::layer()
     .with_line_number(false)
@@ -13,11 +14,18 @@ pub fn init_logger() {
     .with_level(true)
     .compact();
 
-  // This limits the logger to emits only this crate
-  // let pkg_name = env!("CARGO_PKG_NAME").replace('-', "_");
-  // let level_string = std::env::var(EnvFilter::DEFAULT_ENV).unwrap_or_else(|_| "info".to_string());
-  // let filter_layer = EnvFilter::new(format!("{}={}", pkg_name, level_string));
-  let filter_layer = EnvFilter::from_default_env();
+  // This limits the logger to emits only relevant crate
+  let passed_pkg_names = ["hot_reload".to_string(), "server_bin".to_string(), "server_lib".to_string()];
+  let level_string = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+  let level = tracing::Level::from_str(level_string.as_str()).unwrap_or(tracing::Level::INFO);
+
+  let filter_layer = tracing_subscriber::filter::filter_fn(move |metadata| {
+    (passed_pkg_names
+      .iter()
+      .any(|pkg_name| metadata.target().starts_with(pkg_name))
+      && metadata.level() <= &level)
+      || metadata.level() <= &tracing::Level::WARN.min(level)
+  });
 
   tracing_subscriber::registry().with(format_layer).with(filter_layer).init();
 }
