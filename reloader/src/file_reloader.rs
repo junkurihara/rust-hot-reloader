@@ -207,7 +207,8 @@ where
       } else {
         // File actually removed
         warn!("File was removed and does not exist");
-        if let Err(e) = tx.send(WatchEvent::Removed).await {
+        // We do not send WatchEvent::Removed here because the file may be recreated later.
+        if let Err(e) = tx.send(WatchEvent::Error("File was removed".into())).await {
           error!("Failed to send removed event: {}", e);
         }
       }

@@ -247,6 +247,8 @@ where
         }
       }
       WatchEvent::Removed => {
+        // Be careful with Removed events; they may be transient.
+        // If you do not want to treat removals as terminal, consider to emit an WatchEvent::Error instead to trigger fallback.
         warn!("Watch target was removed");
         self.broadcast_removal().await?;
       }
