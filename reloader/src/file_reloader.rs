@@ -2,6 +2,7 @@ use crate::{RealtimeWatch, RealtimeWatchHandle, Reload, ReloaderError, WatchEven
 use async_trait::async_trait;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::{
+  env,
   path::{Path, PathBuf},
   sync::{
     Arc,
@@ -34,8 +35,18 @@ where
 {
   type Source = String;
   async fn new(source: &Self::Source) -> Result<Self, ReloaderError<F, String>> {
+    let mut file_path = PathBuf::from(source);
+    if !file_path.is_absolute() {
+      file_path = env::current_dir()
+        .map_err(|e| ReloaderError::<F, String>::Other(e.into()))?
+        .join(file_path);
+    }
+    if let Ok(canonical) = file_path.canonicalize() {
+      file_path = canonical;
+    }
+
     Ok(Self {
-      file_path: PathBuf::from(source),
+      file_path,
       _phantom: std::marker::PhantomData,
     })
   }
@@ -226,10 +237,12 @@ where
     let file_path = self.file_path.clone();
     let debounce_counter = Arc::new(AtomicU64::new(0));
     let latest_event = Arc::new(Mutex::new(None::<(u64, DebouncedEvent)>));
+    let watch_root = file_path.parent().map(Path::to_path_buf).unwrap_or_else(|| file_path.clone());
 
     let watcher = {
       let tx = tx.clone();
       let file_path_for_callback = file_path.clone();
+      let watch_root_for_callback = watch_root.clone();
       let debounce_counter = debounce_counter.clone();
       let latest_event = latest_event.clone();
 
@@ -241,6 +254,7 @@ where
       let mut watcher: RecommendedWatcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
         let tx = tx.clone();
         let file_path = file_path_for_callback.clone();
+        let watch_root = watch_root_for_callback.clone();
         let handle = handle.clone();
         let debounce_counter = debounce_counter.clone();
         let latest_event = latest_event.clone();
@@ -248,20 +262,33 @@ where
         // Spawn async task on Tokio runtime from the notify callback thread.
         // This bridges the gap between notify's sync callback and our async debouncing logic.
         handle.spawn(async move {
-          // Classify the file system event
           let event = match res {
             Ok(event) => {
               debug!("File event: {:?}", event);
-              match event.kind {
-                // File was modified or created - trigger reload
-                EventKind::Modify(_) | EventKind::Create(_) => Some(DebouncedEvent::Reload),
-                // File was removed - verify after debounce (Docker volume compatibility)
-                EventKind::Remove(_) => Some(DebouncedEvent::RemovedPendingVerification),
-                // Ignore other events (access, metadata-only changes, etc.)
-                _ => {
-                  debug!("Ignoring event kind: {:?}", event.kind);
-                  None
+              let is_relevant = event.paths.iter().any(|event_path| {
+                let absolute_event_path = if event_path.is_absolute() {
+                  event_path.clone()
+                } else {
+                  watch_root.join(event_path)
+                };
+                absolute_event_path == file_path
+              });
+
+              if is_relevant {
+                match event.kind {
+                  // File was modified or created - trigger reload
+                  EventKind::Modify(_) | EventKind::Create(_) => Some(DebouncedEvent::Reload),
+                  // File was removed - verify after debounce (Docker volume compatibility)
+                  EventKind::Remove(_) => Some(DebouncedEvent::RemovedPendingVerification),
+                  // Ignore other events (access, metadata-only changes, etc.)
+                  _ => {
+                    debug!("Ignoring event kind: {:?}", event.kind);
+                    None
+                  }
                 }
+              } else {
+                debug!("Ignoring event for unrelated path: {:?}", event.paths);
+                None
               }
             }
             Err(e) => {
@@ -279,7 +306,7 @@ where
       .map_err(|e| ReloaderError::Other(e.into()))?;
 
       watcher
-        .watch(&file_path, RecursiveMode::NonRecursive)
+        .watch(&watch_root, RecursiveMode::NonRecursive)
         .map_err(|e| ReloaderError::Other(e.into()))?;
 
       watcher
