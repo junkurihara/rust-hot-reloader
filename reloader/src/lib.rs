@@ -417,10 +417,7 @@ where
   async fn broadcast_update(&self, target: V) -> ReloadResult<(), V, S> {
     info!("Target reloaded. Broadcasting updated value");
 
-    self
-      .tx
-      .send(Some(target.clone()))
-      .map_err(ReloaderError::WatchSendError)?;
+    self.tx.send(Some(target.clone())).map_err(ReloaderError::WatchSendError)?;
 
     {
       let mut current_value = self.current_value.lock().await;

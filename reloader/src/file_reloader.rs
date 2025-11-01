@@ -65,7 +65,9 @@ const FILE_EVENT_DEBOUNCE: Duration = Duration::from_millis(200);
 /// Internal enum to represent debounced file events.
 enum DebouncedEvent {
   Reload,
-  Removed,
+  /// File was removed but needs verification after debounce.
+  /// Used for Docker volumes where modifications appear as Remove events.
+  RemovedPendingVerification,
   Error(String),
 }
 
@@ -152,11 +154,8 @@ async fn queue_debounced_event<F>(
 }
 
 /// Handle a debounced file event by reading and parsing the file, then sending appropriate events.
-async fn handle_debounced_event<F>(
-  event: DebouncedEvent,
-  tx: &mpsc::Sender<WatchEvent<F>>,
-  file_path: &PathBuf,
-) where
+async fn handle_debounced_event<F>(event: DebouncedEvent, tx: &mpsc::Sender<WatchEvent<F>>, file_path: &PathBuf)
+where
   F: Eq + PartialEq + AsyncFileLoad + Sync,
   <F as AsyncFileLoad>::Error: std::fmt::Display,
 {
@@ -175,10 +174,31 @@ async fn handle_debounced_event<F>(
         }
       }
     },
-    DebouncedEvent::Removed => {
-      warn!("The file was removed");
-      if let Err(e) = tx.send(WatchEvent::Removed).await {
-        error!("Failed to send removed event: {}", e);
+    DebouncedEvent::RemovedPendingVerification => {
+      // Check if file still exists after debounce period.
+      // Docker volumes may show Remove events for modifications.
+      if file_path.exists() {
+        debug!("File was temporarily removed but exists now, treating as modification");
+        match F::async_load_from(file_path).await {
+          Ok(obj) => {
+            if let Err(e) = tx.send(WatchEvent::Changed(obj)).await {
+              error!("Failed to send changed event: {}", e);
+            }
+          }
+          Err(e) => {
+            error!("Failed to read the file after Remove event: {}", e);
+            let message = e.to_string();
+            if let Err(send_err) = tx.send(WatchEvent::Error(message)).await {
+              error!("Failed to send error event: {}", send_err);
+            }
+          }
+        }
+      } else {
+        // File actually removed
+        warn!("File was removed and does not exist");
+        if let Err(e) = tx.send(WatchEvent::Removed).await {
+          error!("Failed to send removed event: {}", e);
+        }
       }
     }
     DebouncedEvent::Error(message) => {
@@ -235,8 +255,8 @@ where
               match event.kind {
                 // File was modified or created - trigger reload
                 EventKind::Modify(_) | EventKind::Create(_) => Some(DebouncedEvent::Reload),
-                // File was removed - signal removal
-                EventKind::Remove(_) => Some(DebouncedEvent::Removed),
+                // File was removed - verify after debounce (Docker volume compatibility)
+                EventKind::Remove(_) => Some(DebouncedEvent::RemovedPendingVerification),
                 // Ignore other events (access, metadata-only changes, etc.)
                 _ => {
                   debug!("Ignoring event kind: {:?}", event.kind);
