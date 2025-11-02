@@ -472,7 +472,7 @@ where
       *guard = Some(watcher_state.clone());
     }
 
-    let (_initial_added, initial_removed) = match F::async_load_from(&self.file_path).await {
+    let (initial_added, initial_removed) = match F::async_load_from(&self.file_path).await {
       Ok(obj) => {
         let deps = obj.dependent_paths();
         self.update_tracked_paths(deps).await
@@ -484,10 +484,9 @@ where
     };
 
     let tracked_paths = self.tracked_paths_snapshot().await;
-    let added_for_sync = tracked_paths.clone();
 
     watcher_state
-      .synchronize_directories(&tracked_paths, &added_for_sync, &initial_removed)
+      .synchronize_directories(&tracked_paths, &initial_added, &initial_removed)
       .await;
 
     debug!("File watching established for: {:?}", file_path);
