@@ -186,7 +186,7 @@ impl WatcherState {
     let mut watcher = self.watcher.lock().await;
 
     for dir in directories_to_add {
-      if let Err(e) = watcher.watch(&dir, RecursiveMode::Recursive) {
+      if let Err(e) = watcher.watch(&dir, RecursiveMode::NonRecursive) {
         warn!("Failed to watch directory {:?}: {}", dir, e);
       }
     }
