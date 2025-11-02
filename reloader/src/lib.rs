@@ -12,8 +12,8 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::{
-  sync::{Mutex, watch},
-  time::{Duration, sleep},
+    sync::{Mutex, watch},
+    time::{Duration, sleep},
 };
 use tracing::{debug, error, info, warn};
 
@@ -28,20 +28,20 @@ const DEFAULT_WATCH_DELAY_SEC: u32 = 10;
 #[derive(Debug, Error)]
 pub enum ReloaderError<V, S = &'static str>
 where
-  V: Eq + PartialEq,
-  S: Into<std::borrow::Cow<'static, str>> + std::fmt::Display,
+    V: Eq + PartialEq,
+    S: Into<std::borrow::Cow<'static, str>> + std::fmt::Display,
 {
-  #[error("Error at reloaded value receiver")]
-  WatchRecvError(#[from] watch::error::RecvError),
+    #[error("Error at reloaded value receiver")]
+    WatchRecvError(#[from] watch::error::RecvError),
 
-  #[error("Error at reloaded value sender")]
-  WatchSendError(#[from] watch::error::SendError<Option<V>>),
+    #[error("Error at reloaded value sender")]
+    WatchSendError(#[from] watch::error::SendError<Option<V>>),
 
-  #[error("Failed to reload: {0}")]
-  Reload(S),
+    #[error("Failed to reload: {0}")]
+    Reload(S),
 
-  #[error(transparent)]
-  Other(#[from] anyhow::Error),
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 /// Type alias for a commonly used Result type
@@ -50,12 +50,12 @@ pub type ReloadResult<T, V, S = &'static str> = Result<T, ReloaderError<V, S>>;
 /// Event emitted by realtime watchers
 #[derive(Debug, Clone)]
 pub enum WatchEvent<V> {
-  /// Value changed with new content
-  Changed(V),
-  /// Source was removed or became unavailable
-  Removed,
-  /// Error occurred during watching
-  Error(String),
+    /// Value changed with new content
+    Changed(V),
+    /// Source was removed or became unavailable
+    Removed,
+    /// Error occurred during watching
+    Error(String),
 }
 
 /// Trait defining the responsibility of reloaders to periodically load target values from a source.
@@ -65,18 +65,18 @@ pub enum WatchEvent<V> {
 #[async_trait]
 pub trait Reload<V, S = &'static str>
 where
-  V: Eq + PartialEq,
-  S: Into<std::borrow::Cow<'static, str>> + std::fmt::Display,
+    V: Eq + PartialEq,
+    S: Into<std::borrow::Cow<'static, str>> + std::fmt::Display,
 {
-  type Source;
+    type Source;
 
-  /// Create a new reloader instance from the given source
-  async fn new(src: &Self::Source) -> ReloadResult<Self, V, S>
-  where
-    Self: Sized;
+    /// Create a new reloader instance from the given source
+    async fn new(src: &Self::Source) -> ReloadResult<Self, V, S>
+    where
+        Self: Sized;
 
-  /// Reload the target value from the source
-  async fn reload(&self) -> ReloadResult<Option<V>, V, S>;
+    /// Reload the target value from the source
+    async fn reload(&self) -> ReloadResult<Option<V>, V, S>;
 }
 
 /* ---------------------------------------------------------- */
@@ -85,56 +85,59 @@ where
 /// Sender wrapper for broadcasting reloaded values to receivers
 pub struct ReloaderSender<V>
 where
-  V: Eq + PartialEq,
+    V: Eq + PartialEq,
 {
-  inner: watch::Sender<Option<V>>,
+    inner: watch::Sender<Option<V>>,
 }
 
 impl<V> ReloaderSender<V>
 where
-  V: Eq + PartialEq,
+    V: Eq + PartialEq,
 {
-  /// Send a new value to all receivers
-  pub fn send(&self, value: Option<V>) -> Result<(), watch::error::SendError<Option<V>>> {
-    self.inner.send(value)
-  }
+    /// Send a new value to all receivers
+    pub fn send(&self, value: Option<V>) -> Result<(), watch::error::SendError<Option<V>>> {
+        self.inner.send(value)
+    }
 }
 
 /// Receiver wrapper for listening to reloaded values
 #[derive(Clone)]
 pub struct ReloaderReceiver<V, S = &'static str>
 where
-  V: Eq + PartialEq,
-  S: Into<std::borrow::Cow<'static, str>> + std::fmt::Display,
+    V: Eq + PartialEq,
+    S: Into<std::borrow::Cow<'static, str>> + std::fmt::Display,
 {
-  inner: watch::Receiver<Option<V>>,
-  /// PhantomData is used to mark this type as logically owning S without actually storing it.
-  /// This ensures proper variance and drop check behavior for the generic type parameter S.
-  _phantom: std::marker::PhantomData<S>,
+    inner: watch::Receiver<Option<V>>,
+    /// PhantomData is used to mark this type as logically owning S without actually storing it.
+    /// This ensures proper variance and drop check behavior for the generic type parameter S.
+    _phantom: std::marker::PhantomData<S>,
 }
 
 impl<V, S> ReloaderReceiver<V, S>
 where
-  V: Eq + PartialEq,
-  S: Into<std::borrow::Cow<'static, str>> + std::fmt::Display,
+    V: Eq + PartialEq,
+    S: Into<std::borrow::Cow<'static, str>> + std::fmt::Display,
 {
-  /// Wait for the next change notification
-  pub async fn changed(&mut self) -> ReloadResult<(), V, S> {
-    self.inner.changed().await.map_err(ReloaderError::WatchRecvError)
-  }
+    /// Wait for the next change notification
+    pub async fn changed(&mut self) -> ReloadResult<(), V, S> {
+        self.inner
+            .changed()
+            .await
+            .map_err(ReloaderError::WatchRecvError)
+    }
 
-  /// Borrow the current value
-  pub fn borrow(&self) -> watch::Ref<'_, Option<V>> {
-    self.inner.borrow()
-  }
+    /// Borrow the current value
+    pub fn borrow(&self) -> watch::Ref<'_, Option<V>> {
+        self.inner.borrow()
+    }
 
-  /// Get a clone of the current value if it exists
-  pub fn get(&self) -> Option<V>
-  where
-    V: Clone,
-  {
-    self.inner.borrow().clone()
-  }
+    /// Get a clone of the current value if it exists
+    pub fn get(&self) -> Option<V>
+    where
+        V: Clone,
+    {
+        self.inner.borrow().clone()
+    }
 }
 
 /* ---------------------------------------------------------- */
@@ -143,68 +146,68 @@ where
 /// Strategy for watching and reloading target values
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WatchStrategy {
-  /// Use polling-based monitoring (default, works for all data sources)
-  Polling,
-  /// Use realtime event-based monitoring (requires `RealtimeWatch` implementation)
-  Realtime,
-  /// Try realtime monitoring first, fall back to polling if it fails and periodically retry realtime
-  Hybrid,
+    /// Use polling-based monitoring (default, works for all data sources)
+    Polling,
+    /// Use realtime event-based monitoring (requires `RealtimeWatch` implementation)
+    Realtime,
+    /// Try realtime monitoring first, fall back to polling if it fails and periodically retry realtime
+    Hybrid,
 }
 
 impl Default for WatchStrategy {
-  fn default() -> Self {
-    Self::Polling
-  }
+    fn default() -> Self {
+        Self::Polling
+    }
 }
 
 /// Configuration for the reloader service
 #[derive(Debug, Clone)]
 pub struct ReloaderConfig {
-  /// Period between reload attempts in seconds (used in Polling mode)
-  pub watch_delay_sec: u32,
-  /// If true, broadcast updates even when values haven't changed
-  pub force_reload: bool,
-  /// Strategy for watching the target value
-  pub strategy: WatchStrategy,
+    /// Period between reload attempts in seconds (used in Polling mode)
+    pub watch_delay_sec: u32,
+    /// If true, broadcast updates even when values haven't changed
+    pub force_reload: bool,
+    /// Strategy for watching the target value
+    pub strategy: WatchStrategy,
 }
 
 impl Default for ReloaderConfig {
-  fn default() -> Self {
-    Self {
-      watch_delay_sec: DEFAULT_WATCH_DELAY_SEC,
-      force_reload: false,
-      strategy: WatchStrategy::Polling,
+    fn default() -> Self {
+        Self {
+            watch_delay_sec: DEFAULT_WATCH_DELAY_SEC,
+            force_reload: false,
+            strategy: WatchStrategy::Polling,
+        }
     }
-  }
 }
 
 impl ReloaderConfig {
-  /// Create a config with polling strategy
-  pub fn polling(watch_delay_sec: u32) -> Self {
-    Self {
-      watch_delay_sec,
-      force_reload: false,
-      strategy: WatchStrategy::Polling,
+    /// Create a config with polling strategy
+    pub fn polling(watch_delay_sec: u32) -> Self {
+        Self {
+            watch_delay_sec,
+            force_reload: false,
+            strategy: WatchStrategy::Polling,
+        }
     }
-  }
 
-  /// Create a config with realtime strategy
-  pub fn realtime() -> Self {
-    Self {
-      watch_delay_sec: DEFAULT_WATCH_DELAY_SEC, // Used as fallback in case of errors
-      force_reload: false,
-      strategy: WatchStrategy::Realtime,
+    /// Create a config with realtime strategy
+    pub fn realtime() -> Self {
+        Self {
+            watch_delay_sec: DEFAULT_WATCH_DELAY_SEC, // Used as fallback in case of errors
+            force_reload: false,
+            strategy: WatchStrategy::Realtime,
+        }
     }
-  }
 
-  /// Create a config with hybrid strategy (realtime + polling fallback)
-  pub fn hybrid(watch_delay_sec: u32) -> Self {
-    Self {
-      watch_delay_sec,
-      force_reload: false,
-      strategy: WatchStrategy::Hybrid,
+    /// Create a config with hybrid strategy (realtime + polling fallback)
+    pub fn hybrid(watch_delay_sec: u32) -> Self {
+        Self {
+            watch_delay_sec,
+            force_reload: false,
+            strategy: WatchStrategy::Hybrid,
+        }
     }
-  }
 }
 
 /* ---------------------------------------------------------- */
@@ -237,216 +240,222 @@ impl ReloaderConfig {
 /// ```
 pub struct ReloaderService<T, V, S = &'static str>
 where
-  T: Reload<V, S>,
-  V: Eq + PartialEq + Clone,
-  S: Into<std::borrow::Cow<'static, str>> + std::fmt::Display,
+    T: Reload<V, S>,
+    V: Eq + PartialEq + Clone,
+    S: Into<std::borrow::Cow<'static, str>> + std::fmt::Display,
 {
-  reloader: T,
-  current_value: Arc<Mutex<Option<V>>>,
-  tx: ReloaderSender<V>,
-  config: ReloaderConfig,
-  /// PhantomData is used to mark this type as logically owning S without actually storing it.
-  /// This ensures proper variance and drop check behavior for the generic type parameter S.
-  _phantom: std::marker::PhantomData<S>,
+    reloader: T,
+    current_value: Arc<Mutex<Option<V>>>,
+    tx: ReloaderSender<V>,
+    config: ReloaderConfig,
+    /// PhantomData is used to mark this type as logically owning S without actually storing it.
+    /// This ensures proper variance and drop check behavior for the generic type parameter S.
+    _phantom: std::marker::PhantomData<S>,
 }
 
 impl<T, V, S> ReloaderService<T, V, S>
 where
-  T: Reload<V, S> + Clone,
-  V: Eq + PartialEq + Clone,
-  S: Into<std::borrow::Cow<'static, str>> + std::fmt::Display,
+    T: Reload<V, S> + Clone,
+    V: Eq + PartialEq + Clone,
+    S: Into<std::borrow::Cow<'static, str>> + std::fmt::Display,
 {
-  /* -------------------- */
-  // Public API: Service Creation
+    /* -------------------- */
+    // Public API: Service Creation
 
-  /// Create a new reloader service with the given configuration
-  pub async fn new(
-    source: &<T as Reload<V, S>>::Source,
-    config: ReloaderConfig,
-  ) -> ReloadResult<(Self, ReloaderReceiver<V, S>), V, S> {
-    let reloader = <T as Reload<V, S>>::new(source).await?;
-    let (tx, rx) = watch::channel(None);
+    /// Create a new reloader service with the given configuration
+    pub async fn new(
+        source: &<T as Reload<V, S>>::Source,
+        config: ReloaderConfig,
+    ) -> ReloadResult<(Self, ReloaderReceiver<V, S>), V, S> {
+        let reloader = <T as Reload<V, S>>::new(source).await?;
+        let (tx, rx) = watch::channel(None);
 
-    Ok((
-      Self {
-        current_value: Arc::new(Mutex::new(None)),
-        reloader,
-        tx: ReloaderSender { inner: tx },
-        config,
-        _phantom: std::marker::PhantomData,
-      },
-      ReloaderReceiver {
-        inner: rx,
-        _phantom: std::marker::PhantomData,
-      },
-    ))
-  }
-
-  /// Create a new reloader service with default configuration
-  pub async fn with_defaults(source: &<T as Reload<V, S>>::Source) -> ReloadResult<(Self, ReloaderReceiver<V, S>), V, S> {
-    Self::new(source, ReloaderConfig::default()).await
-  }
-
-  /// Create a new reloader service with custom delay
-  pub async fn with_delay(
-    source: &<T as Reload<V, S>>::Source,
-    watch_delay_sec: u32,
-  ) -> ReloadResult<(Self, ReloaderReceiver<V, S>), V, S> {
-    Self::new(
-      source,
-      ReloaderConfig {
-        watch_delay_sec,
-        force_reload: false,
-        strategy: WatchStrategy::Polling,
-      },
-    )
-    .await
-  }
-
-  /* -------------------- */
-  // Public API: Service Entry Points
-
-  /// Start the reloader service watching the target value (polling mode only)
-  pub async fn start(&self) -> ReloadResult<(), V, S> {
-    match self.config.strategy {
-      WatchStrategy::Polling => {
-        info!("Starting reloader service in polling mode");
-        self.start_polling().await
-      }
-      WatchStrategy::Realtime | WatchStrategy::Hybrid => {
-        error!("Realtime strategies require RealtimeWatch trait. Use start_with_realtime() instead.");
-        Err(ReloaderError::Other(anyhow::anyhow!(
-          "Realtime strategies require RealtimeWatch implementation. Use start_with_realtime() for types implementing RealtimeWatch."
-        )))
-      }
+        Ok((
+            Self {
+                current_value: Arc::new(Mutex::new(None)),
+                reloader,
+                tx: ReloaderSender { inner: tx },
+                config,
+                _phantom: std::marker::PhantomData,
+            },
+            ReloaderReceiver {
+                inner: rx,
+                _phantom: std::marker::PhantomData,
+            },
+        ))
     }
-  }
 
-  /* -------------------- */
-  // Internal: Polling Mode Implementation
+    /// Create a new reloader service with default configuration
+    pub async fn with_defaults(
+        source: &<T as Reload<V, S>>::Source,
+    ) -> ReloadResult<(Self, ReloaderReceiver<V, S>), V, S> {
+        Self::new(source, ReloaderConfig::default()).await
+    }
 
-  /// Start the service in polling mode
-  async fn start_polling(&self) -> ReloadResult<(), V, S> {
-    debug!("Polling mode active");
+    /// Create a new reloader service with custom delay
+    pub async fn with_delay(
+        source: &<T as Reload<V, S>>::Source,
+        watch_delay_sec: u32,
+    ) -> ReloadResult<(Self, ReloaderReceiver<V, S>), V, S> {
+        Self::new(
+            source,
+            ReloaderConfig {
+                watch_delay_sec,
+                force_reload: false,
+                strategy: WatchStrategy::Polling,
+            },
+        )
+        .await
+    }
 
-    loop {
-      match self.reload_cycle().await {
-        Ok(should_continue) => {
-          if !should_continue {
-            break;
-          }
+    /* -------------------- */
+    // Public API: Service Entry Points
+
+    /// Start the reloader service watching the target value (polling mode only)
+    pub async fn start(&self) -> ReloadResult<(), V, S> {
+        match self.config.strategy {
+            WatchStrategy::Polling => {
+                info!("Starting reloader service in polling mode");
+                self.start_polling().await
+            }
+            WatchStrategy::Realtime | WatchStrategy::Hybrid => {
+                error!(
+                    "Realtime strategies require RealtimeWatch trait. Use start_with_realtime() instead."
+                );
+                Err(ReloaderError::Other(anyhow::anyhow!(
+                    "Realtime strategies require RealtimeWatch implementation. Use start_with_realtime() for types implementing RealtimeWatch."
+                )))
+            }
         }
-        Err(e) => {
-          error!("Critical error in reload cycle: {}", e);
-          return Err(e);
+    }
+
+    /* -------------------- */
+    // Internal: Polling Mode Implementation
+
+    /// Start the service in polling mode
+    async fn start_polling(&self) -> ReloadResult<(), V, S> {
+        debug!("Polling mode active");
+
+        loop {
+            match self.reload_cycle().await {
+                Ok(should_continue) => {
+                    if !should_continue {
+                        break;
+                    }
+                }
+                Err(e) => {
+                    error!("Critical error in reload cycle: {}", e);
+                    return Err(e);
+                }
+            }
+
+            self.sleep_delay().await;
         }
-      }
 
-      self.sleep_delay().await;
+        Ok(())
     }
 
-    Ok(())
-  }
+    /* -------------------- */
+    // Internal: Reload Cycle Management
 
-  /* -------------------- */
-  // Internal: Reload Cycle Management
-
-  /// Execute a single reload cycle with contextual logging.
-  /// Returns `Ok(true)` if the service should continue, `Ok(false)` if it should stop.
-  async fn execute_reload_cycle(&self, context: &str) -> ReloadResult<bool, V, S> {
-    match self.reload_cycle().await {
-      Ok(should_continue) => Ok(should_continue),
-      Err(e) => {
-        error!("Critical error during {}: {}", context, e);
-        Err(e)
-      }
-    }
-  }
-
-  /// Execute one reload cycle.
-  /// Attempts to reload the target value and broadcasts updates if the value changed.
-  /// Returns `Ok(true)` to continue the service loop.
-  async fn reload_cycle(&self) -> ReloadResult<bool, V, S> {
-    let target = match self.try_reload().await {
-      Ok(Some(target)) => target,
-      Ok(None) => {
-        warn!("Reloader target was none");
-        return Ok(true); // Continue the loop
-      }
-      Err(e) => {
-        warn!("Failed to reload watch target: {}", e);
-        return Ok(true); // Continue the loop
-      }
-    };
-
-    if self.should_broadcast_update(&target).await? {
-      self.broadcast_update(target).await?;
-    } else {
-      debug!("Reloader target was not updated");
+    /// Execute a single reload cycle with contextual logging.
+    /// Returns `Ok(true)` if the service should continue, `Ok(false)` if it should stop.
+    async fn execute_reload_cycle(&self, context: &str) -> ReloadResult<bool, V, S> {
+        match self.reload_cycle().await {
+            Ok(should_continue) => Ok(should_continue),
+            Err(e) => {
+                error!("Critical error during {}: {}", context, e);
+                Err(e)
+            }
+        }
     }
 
-    Ok(true)
-  }
+    /// Execute one reload cycle.
+    /// Attempts to reload the target value and broadcasts updates if the value changed.
+    /// Returns `Ok(true)` to continue the service loop.
+    async fn reload_cycle(&self) -> ReloadResult<bool, V, S> {
+        let target = match self.try_reload().await {
+            Ok(Some(target)) => target,
+            Ok(None) => {
+                warn!("Reloader target was none");
+                return Ok(true); // Continue the loop
+            }
+            Err(e) => {
+                warn!("Failed to reload watch target: {}", e);
+                return Ok(true); // Continue the loop
+            }
+        };
 
-  /* -------------------- */
-  // Internal: Value Loading and Broadcasting
+        if self.should_broadcast_update(&target).await? {
+            self.broadcast_update(target).await?;
+        } else {
+            debug!("Reloader target was not updated");
+        }
 
-  /// Attempt to reload the target value
-  async fn try_reload(&self) -> ReloadResult<Option<V>, V, S> {
-    self.reloader.reload().await
-  }
-
-  /// Check if we should broadcast an update for the given target.
-  /// Returns `true` if `force_reload` is enabled, the value has changed, or this is the first load.
-  async fn should_broadcast_update(&self, target: &V) -> ReloadResult<bool, V, S> {
-    if self.config.force_reload {
-      return Ok(true);
+        Ok(true)
     }
 
-    let current_value = self.current_value.lock().await;
-    let should_update = match current_value.as_ref() {
-      Some(old_value) => old_value != target,
-      None => true,
-    };
+    /* -------------------- */
+    // Internal: Value Loading and Broadcasting
 
-    Ok(should_update)
-  }
-
-  /// Broadcast the updated value to all receivers.
-  /// This sends the new value through the watch channel and updates the cached current value.
-  async fn broadcast_update(&self, target: V) -> ReloadResult<(), V, S> {
-    info!("Target reloaded. Broadcasting updated value");
-
-    self.tx.send(Some(target.clone())).map_err(ReloaderError::WatchSendError)?;
-
-    {
-      let mut current_value = self.current_value.lock().await;
-      *current_value = Some(target);
+    /// Attempt to reload the target value
+    async fn try_reload(&self) -> ReloadResult<Option<V>, V, S> {
+        self.reloader.reload().await
     }
 
-    Ok(())
-  }
+    /// Check if we should broadcast an update for the given target.
+    /// Returns `true` if `force_reload` is enabled, the value has changed, or this is the first load.
+    async fn should_broadcast_update(&self, target: &V) -> ReloadResult<bool, V, S> {
+        if self.config.force_reload {
+            return Ok(true);
+        }
 
-  /// Broadcast a removal event to all receivers.
-  /// This indicates that the target data source has been removed or become unavailable.
-  async fn broadcast_removal(&self) -> ReloadResult<(), V, S> {
-    info!("Target removed. Broadcasting empty value");
+        let current_value = self.current_value.lock().await;
+        let should_update = match current_value.as_ref() {
+            Some(old_value) => old_value != target,
+            None => true,
+        };
 
-    self.tx.send(None).map_err(ReloaderError::WatchSendError)?;
-
-    {
-      let mut current_value = self.current_value.lock().await;
-      *current_value = None;
+        Ok(should_update)
     }
 
-    Ok(())
-  }
+    /// Broadcast the updated value to all receivers.
+    /// This sends the new value through the watch channel and updates the cached current value.
+    async fn broadcast_update(&self, target: V) -> ReloadResult<(), V, S> {
+        info!("Target reloaded. Broadcasting updated value");
 
-  /* -------------------- */
-  // Internal: Utility Methods
+        self.tx
+            .send(Some(target.clone()))
+            .map_err(ReloaderError::WatchSendError)?;
 
-  /// Sleep for the configured delay period
-  async fn sleep_delay(&self) {
-    sleep(Duration::from_secs(self.config.watch_delay_sec.into())).await;
-  }
+        {
+            let mut current_value = self.current_value.lock().await;
+            *current_value = Some(target);
+        }
+
+        Ok(())
+    }
+
+    /// Broadcast a removal event to all receivers.
+    /// This indicates that the target data source has been removed or become unavailable.
+    async fn broadcast_removal(&self) -> ReloadResult<(), V, S> {
+        info!("Target removed. Broadcasting empty value");
+
+        self.tx.send(None).map_err(ReloaderError::WatchSendError)?;
+
+        {
+            let mut current_value = self.current_value.lock().await;
+            *current_value = None;
+        }
+
+        Ok(())
+    }
+
+    /* -------------------- */
+    // Internal: Utility Methods
+
+    /// Sleep for the configured delay period
+    async fn sleep_delay(&self) {
+        sleep(Duration::from_secs(self.config.watch_delay_sec.into())).await;
+    }
 }
