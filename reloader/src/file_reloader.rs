@@ -79,7 +79,7 @@ impl<F> FileReloader<F> {
 #[async_trait]
 impl<F> Reload<F, String> for FileReloader<F>
 where
-  F: Eq + PartialEq + for<'a> TryFrom<&'a PathBuf> + AsyncFileLoad + Sync + Send,
+  F: Eq + PartialEq + for<'a> TryFrom<&'a PathBuf> + Sync,
   for<'a> <F as TryFrom<&'a PathBuf>>::Error: std::fmt::Display,
 {
   type Source = String;
@@ -107,8 +107,6 @@ where
 
   async fn reload(&self) -> Result<Option<F>, ReloaderError<F, String>> {
     let obj = F::try_from(&self.file_path).map_err(|e| ReloaderError::<F, String>::Reload(e.to_string()))?;
-    let dependencies = obj.dependent_paths();
-    let _ = self.update_tracked_paths(dependencies).await;
     Ok(Some(obj))
   }
 }
@@ -474,9 +472,22 @@ where
       *guard = Some(watcher_state.clone());
     }
 
-    let initial_paths = self.tracked_paths_snapshot().await;
+    let (_initial_added, initial_removed) = match F::async_load_from(&self.file_path).await {
+      Ok(obj) => {
+        let deps = obj.dependent_paths();
+        self.update_tracked_paths(deps).await
+      }
+      Err(e) => {
+        warn!("Failed to load dependencies during realtime setup: {}", e);
+        (Vec::new(), Vec::new())
+      }
+    };
+
+    let tracked_paths = self.tracked_paths_snapshot().await;
+    let added_for_sync = tracked_paths.clone();
+
     watcher_state
-      .synchronize_directories(&initial_paths, &initial_paths, &[])
+      .synchronize_directories(&tracked_paths, &added_for_sync, &initial_removed)
       .await;
 
     debug!("File watching established for: {:?}", file_path);
