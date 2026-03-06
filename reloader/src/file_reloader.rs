@@ -170,6 +170,13 @@ impl WatcherState {
       .cloned()
       .collect::<Vec<_>>();
 
+    debug!(
+      "Synchronizing watch directories: desired={}, add={}, remove={}",
+      desired_directories.len(),
+      directories_to_add.len(),
+      directories_to_remove.len()
+    );
+
     if directories_to_add.is_empty() && directories_to_remove.is_empty() {
       return;
     }
@@ -181,14 +188,20 @@ impl WatcherState {
 
     for dir in directories_to_add {
       match watcher.watch(&dir, RecursiveMode::NonRecursive) {
-        Ok(_) => added_successfully.push(dir),
+        Ok(_) => {
+          debug!("Watching directory: {:?}", dir);
+          added_successfully.push(dir);
+        }
         Err(e) => warn!("Failed to watch directory {:?}: {}", dir, e),
       };
     }
 
     for dir in directories_to_remove {
       match watcher.unwatch(&dir) {
-        Ok(_) => removed_successfully.push(dir),
+        Ok(_) => {
+          debug!("Unwatched directory: {:?}", dir);
+          removed_successfully.push(dir);
+        }
         Err(e) => warn!("Failed to unwatch directory {:?}: {}", dir, e),
       };
     }
