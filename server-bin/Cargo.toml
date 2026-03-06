@@ -15,31 +15,31 @@ hot_reload = { path = "../reloader/", features = ["file-reloader"] }
 server-lib = { path = "../server-lib/" }
 
 # launch options
-clap = { version = "4.5.51", default-features = false, features = [
+clap = { version = "4.5.60", default-features = false, features = [
   "std",
   "cargo",
   "wrap_help",
 ] }
 
 # async/await
-tokio = { version = "1.48.0", default-features = false, features = [
+tokio = { version = "1.50.0", default-features = false, features = [
   "rt-multi-thread",
   "fs",
 ] }
 
 # error
-anyhow = "1.0.100"
+anyhow = "1.0.102"
 
 # config toml
-toml = { version = "0.9.8", default-features = false, features = [
+toml = { version = "0.9.12", default-features = false, features = [
   "parse",
   "serde",
 ] }
 serde = { version = "1.0.228", default-features = false, features = ["derive"] }
 
 # logging
-tracing = { version = "0.1.41" }
-tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
+tracing = { version = "0.1.44" }
+tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
 async-trait = "0.1.89"
 
 # file system watching
