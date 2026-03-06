@@ -150,48 +150,52 @@ struct WatcherState {
 
 impl WatcherState {
   /// Synchronize watched directories with the currently tracked files.
-  async fn synchronize_directories(&self, tracked_files: &[PathBuf], added_files: &[PathBuf], removed_files: &[PathBuf]) {
-    let mut directories_to_add = Vec::new();
-    let mut directories_to_remove = Vec::new();
+  async fn synchronize_directories(&self, tracked_files: &[PathBuf]) {
+    let desired_directories: HashSet<PathBuf> = tracked_files
+      .iter()
+      .map(|path| path.parent().map(Path::to_path_buf).unwrap_or_else(|| path.clone()))
+      .collect();
 
-    {
-      let mut watched_dirs = self.watched_directories.write().await;
+    let watched_snapshot = {
+      let watched_dirs = self.watched_directories.read().await;
+      watched_dirs.clone()
+    };
 
-      for path in added_files {
-        let parent = path.parent().map(Path::to_path_buf).unwrap_or_else(|| path.clone());
-        if watched_dirs.insert(parent.clone()) {
-          directories_to_add.push(parent);
-        }
-      }
-
-      for path in removed_files {
-        let parent = path.parent().map(Path::to_path_buf).unwrap_or_else(|| path.clone());
-
-        let still_needed = tracked_files
-          .iter()
-          .any(|tracked| tracked.parent().map(Path::to_path_buf).unwrap_or_else(|| tracked.clone()) == parent);
-
-        if !still_needed && watched_dirs.remove(&parent) {
-          directories_to_remove.push(parent);
-        }
-      }
-    }
+    let directories_to_add = desired_directories.difference(&watched_snapshot).cloned().collect::<Vec<_>>();
+    let directories_to_remove = watched_snapshot.difference(&desired_directories).cloned().collect::<Vec<_>>();
 
     if directories_to_add.is_empty() && directories_to_remove.is_empty() {
       return;
     }
 
+    let mut added_successfully = Vec::new();
+    let mut removed_successfully = Vec::new();
+
     let mut watcher = self.watcher.lock().await;
 
     for dir in directories_to_add {
-      if let Err(e) = watcher.watch(&dir, RecursiveMode::NonRecursive) {
-        warn!("Failed to watch directory {:?}: {}", dir, e);
-      }
+      match watcher.watch(&dir, RecursiveMode::NonRecursive) {
+        Ok(_) => added_successfully.push(dir),
+        Err(e) => warn!("Failed to watch directory {:?}: {}", dir, e),
+      };
     }
 
     for dir in directories_to_remove {
-      if let Err(e) = watcher.unwatch(&dir) {
-        warn!("Failed to unwatch directory {:?}: {}", dir, e);
+      match watcher.unwatch(&dir) {
+        Ok(_) => removed_successfully.push(dir),
+        Err(e) => warn!("Failed to unwatch directory {:?}: {}", dir, e),
+      };
+    }
+
+    drop(watcher);
+
+    if !added_successfully.is_empty() || !removed_successfully.is_empty() {
+      let mut watched_dirs = self.watched_directories.write().await;
+      for dir in added_successfully {
+        watched_dirs.insert(dir);
+      }
+      for dir in removed_successfully {
+        watched_dirs.remove(&dir);
       }
     }
   }
@@ -310,10 +314,10 @@ async fn handle_debounced_event<F>(
     DebouncedEvent::Reload => match F::async_load_from(&reloader.file_path).await {
       Ok(obj) => {
         let dependencies = obj.dependent_paths();
-        let (added, removed) = reloader.update_tracked_paths(dependencies).await;
+        let (_added, _removed) = reloader.update_tracked_paths(dependencies).await;
         if let Some(state) = watcher_state.clone() {
           let tracked = reloader.tracked_paths_snapshot().await;
-          state.synchronize_directories(&tracked, &added, &removed).await;
+          state.synchronize_directories(&tracked).await;
         }
 
         if let Err(e) = tx.send(WatchEvent::Changed(obj)).await {
@@ -336,10 +340,10 @@ async fn handle_debounced_event<F>(
         match F::async_load_from(&reloader.file_path).await {
           Ok(obj) => {
             let dependencies = obj.dependent_paths();
-            let (added, removed) = reloader.update_tracked_paths(dependencies).await;
+            let (_added, _removed) = reloader.update_tracked_paths(dependencies).await;
             if let Some(state) = watcher_state.clone() {
               let tracked = reloader.tracked_paths_snapshot().await;
-              state.synchronize_directories(&tracked, &added, &removed).await;
+              state.synchronize_directories(&tracked).await;
             }
 
             if let Err(e) = tx.send(WatchEvent::Changed(obj)).await {
@@ -472,7 +476,7 @@ where
       *guard = Some(watcher_state.clone());
     }
 
-    let (initial_added, initial_removed) = match F::async_load_from(&self.file_path).await {
+    let (_initial_added, _initial_removed) = match F::async_load_from(&self.file_path).await {
       Ok(obj) => {
         let deps = obj.dependent_paths();
         self.update_tracked_paths(deps).await
@@ -485,9 +489,7 @@ where
 
     let tracked_paths = self.tracked_paths_snapshot().await;
 
-    watcher_state
-      .synchronize_directories(&tracked_paths, &initial_added, &initial_removed)
-      .await;
+    watcher_state.synchronize_directories(&tracked_paths).await;
 
     debug!("File watching established for: {:?}", file_path);
 
