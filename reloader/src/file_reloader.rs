@@ -150,7 +150,7 @@ struct WatcherState {
 
 impl WatcherState {
   /// Synchronize watched directories with the currently tracked files.
-  async fn synchronize_directories(&self, tracked_files: &[PathBuf], _added_files: &[PathBuf], _removed_files: &[PathBuf]) {
+  async fn synchronize_directories(&self, tracked_files: &[PathBuf]) {
     let desired_directories: HashSet<PathBuf> = tracked_files
       .iter()
       .map(|path| path.parent().map(Path::to_path_buf).unwrap_or_else(|| path.clone()))
@@ -158,17 +158,11 @@ impl WatcherState {
 
     let watched_snapshot = {
       let watched_dirs = self.watched_directories.read().await;
-      watched_dirs.iter().cloned().collect::<HashSet<_>>()
+      watched_dirs.clone()
     };
 
-    let directories_to_add = desired_directories
-      .difference(&watched_snapshot)
-      .cloned()
-      .collect::<Vec<_>>();
-    let directories_to_remove = watched_snapshot
-      .difference(&desired_directories)
-      .cloned()
-      .collect::<Vec<_>>();
+    let directories_to_add = desired_directories.difference(&watched_snapshot).cloned().collect::<Vec<_>>();
+    let directories_to_remove = watched_snapshot.difference(&desired_directories).cloned().collect::<Vec<_>>();
 
     if directories_to_add.is_empty() && directories_to_remove.is_empty() {
       return;
@@ -320,10 +314,10 @@ async fn handle_debounced_event<F>(
     DebouncedEvent::Reload => match F::async_load_from(&reloader.file_path).await {
       Ok(obj) => {
         let dependencies = obj.dependent_paths();
-        let (added, removed) = reloader.update_tracked_paths(dependencies).await;
+        let (_added, _removed) = reloader.update_tracked_paths(dependencies).await;
         if let Some(state) = watcher_state.clone() {
           let tracked = reloader.tracked_paths_snapshot().await;
-          state.synchronize_directories(&tracked, &added, &removed).await;
+          state.synchronize_directories(&tracked).await;
         }
 
         if let Err(e) = tx.send(WatchEvent::Changed(obj)).await {
@@ -346,10 +340,10 @@ async fn handle_debounced_event<F>(
         match F::async_load_from(&reloader.file_path).await {
           Ok(obj) => {
             let dependencies = obj.dependent_paths();
-            let (added, removed) = reloader.update_tracked_paths(dependencies).await;
+            let (_added, _removed) = reloader.update_tracked_paths(dependencies).await;
             if let Some(state) = watcher_state.clone() {
               let tracked = reloader.tracked_paths_snapshot().await;
-              state.synchronize_directories(&tracked, &added, &removed).await;
+              state.synchronize_directories(&tracked).await;
             }
 
             if let Err(e) = tx.send(WatchEvent::Changed(obj)).await {
@@ -482,7 +476,7 @@ where
       *guard = Some(watcher_state.clone());
     }
 
-    let (initial_added, initial_removed) = match F::async_load_from(&self.file_path).await {
+    let (_initial_added, _initial_removed) = match F::async_load_from(&self.file_path).await {
       Ok(obj) => {
         let deps = obj.dependent_paths();
         self.update_tracked_paths(deps).await
@@ -495,9 +489,7 @@ where
 
     let tracked_paths = self.tracked_paths_snapshot().await;
 
-    watcher_state
-      .synchronize_directories(&tracked_paths, &initial_added, &initial_removed)
-      .await;
+    watcher_state.synchronize_directories(&tracked_paths).await;
 
     debug!("File watching established for: {:?}", file_path);
 
